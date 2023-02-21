@@ -816,20 +816,6 @@ The larger the graph, the less dense<sup>1</sup> it was.
 .footnote[[1] ratio of edges to maximum possible edges.]
 ]
 
-.right-plot[
-```{r}
-min_dist <- read_csv("data/distance.csv")
-eg <- read_csv("data/meb_example_graphs.csv")
-ours <- max_0 |> summarise(u = max(humans), v= max(genes),
-                           e = sum(min_dist == 0), study='ours')
-ggplot(eg) +
-  geom_point(aes(x=u+v, y=e/(u*v))) +
-  scale_x_log10(labels = scales::label_comma()) +
-  scale_y_log10(labels = scales::label_comma(), limits=c(1e-7,1)) +
-  labs(x="Vertices", y="Graph density")
-```
-]
-
 ---
 
 .left-code[
@@ -842,17 +828,6 @@ The larger the graph, the less dense<sup>1</sup> it was.
 .max-prod[**Unfortunately our case is a lot more dense!**]
 
 .footnote[[1] ratio of edges to maximum possible edges.]
-]
-
-.right-plot[
-```{r}
-ggplot(eg, mapping=aes(x=u+v, y=e/(u*v))) +
-  geom_point() +
-  geom_point(data=ours, col='purple', size=2) +
-  scale_x_log10(labels = scales::label_comma()) +
-  scale_y_log10(labels = scales::label_comma(), limits=c(1e-7,1)) +
-  labs(x="Vertices", y="Graph density")
-```
 ]
 
 ---
