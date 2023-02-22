@@ -58,11 +58,6 @@
   background-color: red;
 }
 
-.center-fig {
-  margin: auto;
-  width: 75%;
-}
-
 .small-font .remark-code { /*Change made here*/
   font-size: 70% !important;
 }
@@ -97,4 +92,11 @@ iframe {
 
 .max-prod {
   color: #a020f0;
+}
+
+.center-fig {
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
