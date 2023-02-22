@@ -28,8 +28,6 @@ library(mgcv)
 library(sf)
 library(shiny)
 library(gtools)
-library(gganimate)
-library(transformr)
 library(Manu)
 library(colorspace)
 theme_set(theme_minimal(base_size=13))
@@ -330,29 +328,9 @@ ggplot(top50, aes(x=ST, y=Proportion, fill=Source)) + geom_col() +
 
 Get uncertainty directly.
 
-```{r, gganimate = list(nframes = 220, fps = 20), fig.width=10, fig.height=3.5, fig.retina=1, dpi=96}
-alpha <- top50$Count
-random <- as.data.frame(t(rdirichlet(20, alpha)))
-#random <- bind_cols(random, V21=random[,1])
-
-uncertainty <- bind_cols(top50, random) %>%
-  select(-Count, -Proportion) %>% gather(Iteration, Proportion, V1:V20) %>%
-  extract(Iteration, into="Iteration", regex="([0-9]+)", convert=TRUE)
-
-# plot
-anim <- ggplot(uncertainty, aes(x=ST, y=Proportion, fill=Source)) + geom_col() +
-  scale_y_continuous("Percent", labels = scales::percent_format(accuracy=1, suffix=""), expand=c(0,0)) +
-  scale_fill_manual(values=c(Poultry = "steelblue", Prior = "grey50")) +
-  guides(fill='none') +
-  coord_cartesian(ylim = c(0,25*scale_fact)) +
-  theme(plot.background = element_rect(fill = "white", color = NA),
-        axis.title.x = element_blank(),
-        axis.text.x = element_text(angle = 90, vjust=0.5)) +
-  transition_states(Iteration, transition_length = 1, state_length = 0.1) +
-  ease_aes('cubic-in-out')
-
-anim
-```
+<div class='center-fig'>
+  <img src="figures/dirichlet_uncertainty.gif" style="height: 360px"/>
+</div>
 
 ---
 
