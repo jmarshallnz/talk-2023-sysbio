@@ -650,7 +650,7 @@ allele we have seen before.
 
 ---
 
-## Numeric encoding: Consequences
+.left-code[## Numeric encoding: Consequences
 
 - The alleles are already numeric, so just treat them as numbers.
 
@@ -661,9 +661,18 @@ from the same source.
 
 - So consecutive allele numbers often belong to the same source.
 
-- A tree based model will exploit this perfectly!
+- A tree based model will exploit this well!
+]
 
-<TODO: Image of PubMLST allele assignment for CAMP0001 for eg>
+.right-plot[
+```{r}
+camp0864 <- read_csv("data/camp0864.csv")
+ggplot(camp0864) +
+  geom_point(aes(x=Allele, y=Source, col=Source)) +
+  guides(col='none') +
+  labs(y=NULL, title="CAMP0864 submissions to PubMLST")
+```
+]
 
 ---
 
