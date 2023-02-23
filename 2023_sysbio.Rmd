@@ -557,22 +557,141 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
 ---
 
+## So where are we?
 
-## Data
+- We have 1342 core genes available to us.
+
+- Our goal is to classify human isolates as coming from a set of sources.
+
+- Existing models break if we use too many genes; when we fix them, the attribution is pretty much the same as using MLST.
+
+- Picking 7 random genes is just as good as MLST; so the genes are correlated.
+
+- **Why not try some machine learning techniques that cope with high dimensional, correlated predictors?**
 
 ---
 
-## Data problems
+## Can we use a Random Forest?
 
-- High dimensional. $p=1343$ genes, $n=600$ source and $n=800$ human isolates.
+- Random forests are perfect for classification problems with a large number of potentially correlated predictors!
 
-- Many genes are highly diverse. Range from 3-164 different alleles, median 48.
+- Train the forest on the source isolates, and predict on the human isolates - voila!
+
+--
+
+- But, we have another two problems!
+
+- Our predictors are **categorical**, and many are highly diverse. Median number of alleles is 48.
 
 - Many alleles are seen in only one isolate.
 
-- Many alleles are seen in only one **human** isolate.
+- Many alleles are seen in only one **human** isolate (so aren't in the training set).
 
 ---
+
+## The first problem: High cardinality categorical predictors.
+
+- When we build a tree, at each branching point, we need to choose a gene and decide which alleles should go
+down each branch in order to best separate the sources.
+
+- Need to determine the subset of alleles assigned to the left branch.
+
+- The number of subsets to consider is $2^{K-1}$ where $K$ is the number of alleles.
+
+- If the median $K$ is 48, this is a problem.
+
+- For 2 sources we can do it much faster ($K$ rather than $2^K$) via **target encoding**. Replace the categorical variable with the proportion of training isolates that are the first source in each allele. We then have a numeric variable so need only consider $K-1$ possible split points.
+
+<TODO: Add demo of this>
+
+---
+
+## The second problem: Unique alleles
+
+- Lots of alleles are unique to the test set (we only see them in humans).
+
+- We could ignore them, but it'll dramatically reduce the size of our dataset.
+
+- Lots of the 'unique alleles' are really similar (one SNP difference) from another
+allele we have seen before.
+
+<TODO: Genes we can use plot>
+
+---
+
+## The second problem: Unique alleles
+
+- We have unique alleles in the test set (human isolates).
+
+- Random forests work by repeatedly splitting the sample, so each tree is built off a separate subsample.
+
+- The 'out of bag' sample (the isolates that don't get used to build a tree) are used to evaluate performance. This will have unique alleles.
+
+- When we try and optimise our training (e.g. by using cross validation) then the validation set may also have unique alleles.
+
+- And even within a tree (where the data are all 'observed'), by the time we get down a few branches we may no longer have any isolates of a certain allele left, so can't train with that allele.
+
+- **If we use an 'encoding' scheme to deal with the high cardinality problem, how should we encode things we haven't yet seen?**
+
+---
+
+## Other encoding systems
+
+- One hot encoding: Replace the categorical predictor with binary indicators.
+
+    - Need to be careful how we choose preditors for each tree - typically biased towards predictors with more levels (bigger block of indicators to pick).
+    - Means only some alleles from a gene are considered in a given tree.
+    - Any allele we haven't seen is encoded as "not anything else".
+
+- Numeric encoding: Just treat the categories as ordered and use directly.
+
+    - The trees and forest can split a numeric variable wherever they like, so order maybe doesn't matter much?
+    - Alleles are already numeric, right?
+
+---
+
+## Numeric encoding: Consequences
+
+- The alleles are already numeric, so just treat them as numbers.
+
+- Allele numbers are defined based on the order that isolates are submitted to PubMLST.
+
+- Researchers do not submit isolates randomly to PubMLST. They're often done in 'chunks' of isolates
+from the same source.
+
+- So consecutive allele numbers often belong to the same source.
+
+- A tree based model will exploit this perfectly!
+
+<TODO: Image of PubMLST allele assignment for CAMP0001 for eg>
+
+---
+
+## Numeric encoding: Consequences
+
+Arning et. al. (unknowingly) used this encoding.
+
+Results from their work are rather less impressive when we randomise the
+allele labels.
+
+<TODO: Arning figure>
+
+---
+
+## Alternative encoding: Supplementary data
+
+- We have the sequences of each allele.
+
+- So we know how close each allele is to each other genetically.
+
+- Genetic closeness may be associated with likelihood of being observed on the same source.
+
+- Use genetic distance to encode order via principal coordinate ordination (PCO).
+
+---
+
+
+
 
 ## What Helen's plan is
 
@@ -594,518 +713,6 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
     - Demonstrates existing scoring methods are biased, and presents a solution.
     - Shows how to use auxiliary information for the absent levels.
-
----
-
-## Dealing with absent levels
-
-- Treat the absent levels in humans as missing.
-
-- With a tree or forest, we might be OK.
-
-    - Could use 'surrogate splits' for a tree.
-    - Some of the trees in the forest may not use the absent level(s).
-
-- What if we try and remove the missingness?
-
-- How many humans and/or genes would be retained?
-
----
-
-.left-code[
-## The chart
-
-- Suppose we want to remove all the absent levels.
-
-- And we want to retain $h$ human samples.
-
-- What is the maximum number of genes $g(h)$ that we can
-retain?
-
-]
-
-.right-plot[
-```{r}
-plot_right
-```
-]
-
----
-
-.left-code[
-## The chart
-
-- Suppose we want to remove all the absent levels.
-
-- And we want to retain $h$ human samples.
-
-- What is the maximum number of genes $g(h)$ that we can
-retain?
-
-- The other lines are where we allow two sequences to be treated the same if the sequences are close.
-
-- **We can use many more genes if we allow just one SNP difference in sequences.**
-]
-
-.right-plot[
-```{r}
-plot_right
-```
-]
-
----
-
-## The chart
-
-How do we find the maximum number of genes $g(h)$ for a given number of human cases $h$?
-
-Let $G_i$ be the set of genes for which human $i$ has previously seen alleles. i.e. $G \setminus G_i$ is the set of absent levels.
-
-Need to find the set $H_o \subseteq H$ that maximises the size $g(h) = |G_o|$ of $G_o = \bigcap_{i\in H_o} G_i$.
-
----
-
-## Finding $H_o$
-
-Clearly enumerating all sets $H_o$ of size $h$ is going to be much too time consuming.
-
-One idea is to start with the $H_o$ containing the $h$ humans with fewest absent levels and find the corresponding $G_o$.
-
-But, we can always improve on that by adding in any other humans $i$ where $G_o \subseteq G_i$.
-
-But there's no evidence this will be optimal.
-
---
-
-e.g. consider
-
-```{r}
-simple <- tribble(~row,~g1,~g2,~g3,~g4,
-        1,'a', 'a', 'a','-',
-        2,'-', '-', 'a', 'a',
-        3,'-', '-', 'b', 'a')
-simple |>
-  knitr::kable()
-```
-
-row 1 has the fewest absent levels, yet rows 2 and 3 should be used with $h=2$.
-
-This also holds for genes - the most completely gene may not be in the set $G_o$.
-
----
-
-## What about a graph?
-
-What we're wanting to do is find the largest submatrix of our data matrix such that it has no absent alleles.
-
-In that submatrix, every human will have a previously seen allele at every gene.
-
-There is a closely related problem in graph theory: Finding a subgraph that is completely connected.
-
-Perhaps we can use that!
-
----
-
-class: middle, inverse
-
-# Some graph theory
-
----
-
-## The graph
-
-Treat each human and each gene as a vertex in a graph.
-
-Each human is connected to each gene except where they have an absent level.
-
-This will form a **bipartite graph** $B=\{H, G, E\}$ with vertex set $V=H \cup G$ and edge set $E = \{(h,g) | h \in H\mbox{ has a known level for variable }g \in G\}$
-
-.left-code[
-Our previous example:
-```{r}
-simple |> knitr::kable()
-```
-]
-
-.right-plot[
-```{r, fig.dim=c(4,1.5)}
-library(igraph)
-par(mai=rep(0,4))
-graph <- simple |> pivot_longer(-row) |> filter(value != '-') |> mutate(row = paste0('h', row)) |> select(-value) |>
-  as.matrix() |>
-  graph_from_edgelist(directed=FALSE)
-
-cols <- c("thistle", "wheat2")
-V(graph)$type <- substring(V(graph)$name,1,1) == "g"
-V(graph)$color <- cols[(substring(V(graph)$name,1,1) == "h")+1]
-
-graph |>
-  plot(layout=layout_as_bipartite, vertex.label.color='black', vertex.size = 30, asp = 0.4, margin=0.2)
-```
-]
-
----
-
-## Bipartite graphs
-
-The problem reduces to finding completely connected subgraphs of the corresponding bipartite graph.
-```{r, fig.dim=c(4,1.5), fig.align='center', out.width='50%'}
-par(mai=c(0.1, 0, 0.1, 0))
-k22 <- E(graph, path=c('h2', 'g3', 'h3', 'g4', 'h2'))
-graph |>
-  set_edge_attr('color', value='grey70') |>
-  set_edge_attr('color', index=k22, value='black') |>
-  plot(layout=layout_as_bipartite, vertex.label.color='black', vertex.size = 30, asp = 0.4, margin=0.2)
-```
-The above contains $K_{2,2}$ the complete bipartite graph with 2 vertices in each group.
-
-This is known as a **clique**: everyone is connected to everyone.
-
-So we want to find the **maximal cliques**: Those that are not subgraphs of larger cliques.
-
-We may want to find the **maximum clique**, the largest of all maximal cliques.
-
----
-
-## Maximum cliques
-
-There are three well studied problems of finding the maximum clique:
-
-1. The maximum number of vertices.
-
-2. The maximum such that the number of vertices from both groups is the same.
-
-3. The maximum number of edges.
-
-The first can be solved in polynomial time via a related problem that we'll come to soon.
-
-The other two are NP-complete.
-
----
-
-.left-code[
-## The chart
-
-Each point on our chart corresponds to the maximum clique for a given number of vertices in the first group.
-
-So one or more of the points will correspond to .max-sum[maximising vertices (case 1)], and one or more will correspond to .max-prod[maximising edges (case 3)].
-
-Thus, the problem will be NP-complete so **the chart might take a long time.**
-]
-
-.right-plot[
-```{r}
-max_0 <- max_genes |> filter(dist_to_nearest == 0)
-
-ggplot(max_0, mapping=aes(x=humans, y=genes)) +
-  geom_line() +
-  geom_point(data = max_0 |> filter(max_sum),
-             col='steelblue', size=3) +
-  geom_point(data = max_0 |> filter(max_prod), col='purple', size=4) +
-  labs(x="Number of humans",
-       y="Number of genes") +
-  theme(legend.position='bottom')
-```
-]
-
----
-
-## But we have software!
-
-The maximal edge clique problem has been studied extensively. Even though it is NP-complete, there are a bunch of papers that offer software or algorithms that claim they're great!
-
-<insert pictures thereof>
-
----
-
-.left-code[
-## But we have software!
-
-These algorithms were tested on a bunch of different graphs.
-
-The larger the graph, the less dense<sup>1</sup> it was.
-
-.footnote[[1] ratio of edges to maximum possible edges.]
-]
-
----
-
-.left-code[
-## But we have software!
-
-These algorithms were tested on a bunch of different graphs.
-
-The larger the graph, the less dense<sup>1</sup> it was.
-
-.max-prod[**Unfortunately our case is a lot more dense!**]
-
-.footnote[[1] ratio of edges to maximum possible edges.]
-]
-
----
-
-## Too dense? Reformulate the problem.
-
-Since our graph is too dense for the former algorithms to function well, we reformulate the problem using the **bipartite complement** of the graph.
-
-A complement of a graph inverts the edges by removing the current ones and adding edges wherever there wasn't one before. The bipartite complement extends this to ensure there are no edges between humans or between genes.
-
-```{r, fig.dim=c(8,1.5), fig.align='center', out.width='100%'}
-par(mfrow=c(1,2), mai=c(0.1, 0, 0.1, 0))
-layout <- layout_as_bipartite(graph)
-
-graph |>
-  plot(layout=layout, vertex.label.color='black', vertex.size = 30, asp = 0.4, margin=0.2)
-
-g2 <- graph |> complementer()
-ge <- expand_grid(a=paste0("g", 1:4), b=paste0("g", 1:4)) |>
-  filter(a != b) |>
-  mutate(c=paste(a,b,sep="|")) |> pull(c)
-he <- expand_grid(a=paste0("h", 1:3), b=paste0("h", 1:3)) |>
-  filter(a != b) |>
-  mutate(c=paste(a,b,sep="|")) |> pull(c)
-
-g2 <- g2 |> delete_edges(c(ge, he))
-
-g2 |>
-  plot(layout=layout, vertex.label.color='black', vertex.size = 30, asp = 0.4, margin=0.2)
-```
-
-The problem now becomes removing as few vertices as we can so that all edges are removed: Finding a **minimum vertex cover**.
-
----
-
-## Minimum vertex covers
-
-A **vertex cover** is a set of vertices such that all edges in the graph are incident on one or more vertex in the set.
-
-A **minimum vertex cover** is the smallest vertex cover. Finding this is a well known problem that can be done in polynomial time - we'll see how soon.
-
-For our chart, we want a **constrained** vertex cover: Not just the smalles, though that will be at least one of the points on our chart, but we wish to ensure that a certain number of human vertices are included in the vertex cover.
-
-It turns out that this is a well studied problem too!
-
----
-
-## Constrained bipartite vertex covers
-
-Suppose we have a bipartite graph $B = \{H, G, E\}$ where $H$ and $G$ are disjoint vertex sets and $E$ is the edge set connecting vertices in $H$ to vertices in $G$.
-
-The **constrained bipartite vertex cover** problem asks whether there exists a vertex cover for $B$ containing at most $k_H$ vertices in $H$ and $k_G$ vertices in $G$.
-
-This is exactly what we need for our chart: Set $k_H = |H| - h$. If a cover exists for $k_G = |G| - g$ but no cover exists for $k_G = |G| - (g + 1)$ then the pair $(h,g)$ is on our curve.
-
----
-
-## Example
-
-.left-half[
-If $h=1$ we have a cover with  $g=3$ using the set $\{\mbox{h2}, \mbox{h3}, \mbox{g4}\}$, but no cover exists with $g=4$. 
-
-```{r, fig.dim=c(4,1.5), fig.align='center', out.width='100%'}
-par(mai=c(0.1, 0, 0.1, 0))
-
-g2 |>
-  set_edge_attr('color', value='grey80') |>
-  set_vertex_attr('color', index=c('h2', 'h3'), value=lighten('wheat', 0.9)) |>
-  set_vertex_attr('color', index=c('g4'), value=lighten('thistle', 0.9)) |>
-  set_vertex_attr('frame.color', value='black') |>
-  set_vertex_attr('frame.color', index=c('g4', 'h2', 'h3'), 'grey70') |>
-  set_vertex_attr('label.color', value='black') |>
-  set_vertex_attr('label.color', index=c('g4', 'h2', 'h3'), value='grey70') |>
-  plot(layout=layout, vertex.size = 30, asp = 0.4, margin=0.2)
-```
-
-Thus $(h,g)=(1,3)$ will be on the curve for this graph.
-]
-
-.right-half[
-If $h=2$ we have a cover with $g=2$ using the set $\{\mbox{h1}, \mbox{g1}, \mbox{g2}\}$, but no cover exists with $g=3$.
-
-```{r, fig.dim=c(4,1.5), fig.align='center', out.width='100%'}
-par(mai=c(0.1, 0, 0.1, 0))
-
-g2 |>
-  set_edge_attr('color', value='grey80') |>
-  set_vertex_attr('color', index=c('h1'), value=lighten('wheat', 0.9)) |>
-  set_vertex_attr('color', index=c('g1', 'g2'), value=lighten('thistle', 0.9)) |>
-  set_vertex_attr('frame.color', value='black') |>
-  set_vertex_attr('frame.color', index=c('g1', 'g2', 'h1'), 'grey70') |>
-  set_vertex_attr('label.color', value='black') |>
-  set_vertex_attr('label.color', index=c('g1', 'g2', 'h1'), value='grey70') |>
-  plot(layout=layout, vertex.size = 30, asp = 0.4, margin=0.2)
-```
-
-Thus $(h,g)=(2,2)$ will be on the curve.
-]
-
----
-
-## Example
-
-.left-half[
-If $h=1$ we have a cover with  $g=3$ using the set $\{\mbox{h2}, \mbox{h3}, \mbox{g4}\}$, but no cover exists with $g=4$. 
-
-```{r, fig.dim=c(4,1.5), fig.align='center', out.width='100%'}
-par(mai=c(0.1, 0, 0.1, 0))
-
-bc1 <- c(E(graph, path=c('h1', 'g1')),
-         E(graph, path=c('h1', 'g2')),
-         E(graph, path=c('h1', 'g3')))
-graph |>
-  set_edge_attr('color', value='grey80') |>
-  set_edge_attr('color', index=bc1, value='black') |>
-  set_vertex_attr('color', index=c('h2', 'h3'), value=lighten('wheat', 0.9)) |>
-  set_vertex_attr('color', index=c('g4'), value=lighten('thistle', 0.9)) |>
-  set_vertex_attr('frame.color', value='black') |>
-  set_vertex_attr('frame.color', index=c('g4', 'h2', 'h3'), 'grey70') |>
-  set_vertex_attr('label.color', value='black') |>
-  set_vertex_attr('label.color', index=c('g4', 'h2', 'h3'), value='grey70') |>
-  plot(layout=layout, vertex.size = 30, asp = 0.4, margin=0.2)
-```
-
-Thus $(h,g)=(1,3)$ will be on the curve for this graph, corresponding to the $K_{1,3}$ clique.
-]
-
-.right-half[
-If $h=2$ we have a cover with $g=2$ using the set $\{\mbox{h1}, \mbox{g1}, \mbox{g2}\}$, but no cover exists with $g=3$.
-
-```{r, fig.dim=c(4,1.5), fig.align='center', out.width='100%'}
-par(mai=c(0.1, 0, 0.1, 0))
-
-bc2 <- E(graph, path=c('h2', 'g3', 'h3', 'g4', 'h2'))
-
-graph |>
-  set_edge_attr('color', value='grey80') |>
-  set_edge_attr('color', index=bc2, value='black') |>
-  set_vertex_attr('color', index=c('h1'), value=lighten('wheat', 0.9)) |>
-  set_vertex_attr('color', index=c('g1', 'g2'), value=lighten('thistle', 0.9)) |>
-  set_vertex_attr('frame.color', value='black') |>
-  set_vertex_attr('frame.color', index=c('g1', 'g2', 'h1'), 'grey70') |>
-  set_vertex_attr('label.color', value='black') |>
-  set_vertex_attr('label.color', index=c('g1', 'g2', 'h1'), value='grey70') |>
-  plot(layout=layout, vertex.size = 30, asp = 0.4, margin=0.2)
-```
-
-Thus $(h,g)=(2,2)$ will be on the curve, corresponding to the $K_{2,2}$ clique.
-]
-
----
-
-## Still NP-complete
-
-As we've just reformulated the maximal edge biclique problem, it's still NP-complete.
-
-But our graph now is sparse, so perhaps computation time is feasible.
-
-There are algorithms available, but no ready to use code.
-
-The minimal vertex cover problem is often attacked using integer programming, so that might be a good way to go here.
-
----
-
-## The integer program for minimum vertex cover
-
-Let $V = H \cup G$ be the vertex set of the bipartite graph $B$ and introduce indicators
-$$x_i = \left\{\begin{align}1, & \mbox{ if }v_i \in V\mbox{ is in the vertex cover}\\0,&\mbox{ otherwise.}\end{align}\right.$$
-
-Let $A$ be the **incidence matrix** of $B$ such that rows of $A$ represent vertices and columns represent edges with $A_{ik} = 1$ if edge $k$ is incident on vertex $i$, and $A_{ik}=0$ otherwise.
-
-Then the minimum vertex cover problem translates to the integer program:
-
-$$\begin{align}\mbox{minimise } &\sum_{i=1}^{|V|} x_i\\\mbox{such that } & A^T \mathbf{x} \geq \mathbf{1},\\ &x_i \in \{0, 1\}, i=1,\ldots, |V|.\end{align}$$
-
----
-
-## The integer program for minimum vertex cover
-
-The corresponding *relaxed* linear program:
-$$\begin{align}\mbox{minimise } &\sum_{i=1}^{|V|} x_i\\\mbox{such that } & A^T \mathbf{x} \geq 1,\\ & \mathbf{x} \geq \mathbf{0},\end{align}$$
-can be solved using the simplex algorithm in polynomial time.
-
-If the solutions to the relaxed linear program are integral they also solve the integer program and find a minimum vertex cover.
-
-We can guarantee this if $A^T$ is a **totally unimodular matrix**.
-
----
-
-## Totally unimodular matrices
-
-A matrix $A$ is **totally unimodular** if and only if all square submatrices $S$ have $\det(S) \in \{-1, 0, 1\}$.
-
-Solutions to a linear program above are integral if $A$ is totally unimodular and the RHS of the constraints is integral.
-
-The incidence matrix of a bipartite graph is totally unimodular. We can show this by considering three cases:
-1. A column of $S$ is all zeros. Then $\det(S)=0$.
-2. A column of $S$ contains just one 1. Then $\det(S) = \det(S')$ which is the square matrix formed by deleting the row and column where that 1 is. Use induction on this case.
-3. All columns of $S$ contain two 1s. Split into $S = \left[ \begin{align}S_1\\S_2\end{align}\right]$ where all columns in $S_1$ and $S_2$ contain exactly one 1. Summing the rows in $S_1$ and $S_2$ both give rows of ones, so the rows of $S$ are linearly dependent and $\det{S} = 0$.
-
-**As $A$ is totally unimodular (and thus $A^T$ is also), solutions to the linear program are integral, so give a minimum vertex cover**
-
----
-
-## What about constrained vertex covers?
-
-To get our chart we need to add the constraint
-$$
-\sum_{v_i \in H} x_i \leq |H|-h.
-$$
-This can be done by appending a row to $A^T$ with -1 for humans and 0 for genes.
-
-The resulting matrix will now not be totally unimodular. Consider vertices h2, h3 and g1 from our earlier example. The $3\times 3$ matrix formed by this subgraph and the constraint row has determinant -2:
-
-.left-half[
-```{r, fig.dim=c(4,1.5), fig.align='center', out.width='100%'}
-par(mai=c(0.1, 0, 0.1, 0))
-
-subg <- E(g2, path=c('h2', 'g1', 'h3'))
-g2 |>
-  set_edge_attr('color', value='grey80') |>
-  set_edge_attr('color', index=subg, value='black') |>
-  set_edge_attr('label', index=subg, value=c('e', 'f')) |>
-  set_edge_attr('label.x', index=subg, value=c(-0.3,0)) |>
-  set_edge_attr('label.y', index=subg, value=c(0.3,-0.3)) |>
-  set_vertex_attr('color', index='h1', value=lighten('wheat', 0.9)) |>
-  set_vertex_attr('color', index=c('g2', 'g3', 'g4'), value=lighten('thistle', 0.9)) |>
-#  set_vertex_attr('color', index=c('g1'), value='thistle') |>
-  set_vertex_attr('frame.color', value='grey60') |>
-  set_vertex_attr('frame.color', index=c('g1', 'h2', 'h3'), 'black') |>
-  set_vertex_attr('label.color', value='grey60') |>
-  set_vertex_attr('label.color', index=c('g1', 'h2', 'h3'), value='black') |>
-  plot(layout=layout, vertex.size = 30, asp = 0.4, margin=0.2, edge.label.color='black',edge.label.cex=1)
-```
-]
-
-.right-half[
-<br>
-
-$$S = \begin{array}{cc} & \begin{array}{ccc}\small\mbox{h2} & \small\mbox{ h3} & \small\mbox{ g1}\\ \end{array}\\ \begin{array}{c} \small e\\ \small f\\\ \small \end{array} & \left[\begin{array}{c c c} 0 & 1 & 1\\1 & 0 & 1\\-1 &-1 &0\end{array}\right]\end{array}, \quad \det(S) = -2.$$
-]
-
----
-
-## Still NP-complete, but we can use LEGO
-
-While it won't be solvable in polynomial time, at least we can use existing stuff:
-
-```{r, eval=FALSE, echo=TRUE}
-library(ROI)
-library(ROI.plugin.glpk)
-
-incidence <- matrix(0, nrow=H+G, ncol=nrow(E))
-incidence[cbind(E[,1]    , 1:nrow(E))] <- 1
-incidence[cbind(E[,2] + H, 1:nrow(E))] <- 1
-
-objective <- L_objective(L = c(rep(0, H), rep(1, G)))
-constraint1 <- L_constraint(L = t(incidence), dir = rep('>=', nrow(E)), rhs = rep(1, nrow(E)))
-constraint2 <- L_constraint(L = matrix(c(rep(1, H), rep(0, G)), nrow=1), dir = "<=", rhs=H - h)
-lp <- OP(objective, c(constraint1, constraint2, types = rep("B", H+G), maximum=FALSE)
-ROI_solve(lp, solver="glpk")
-```
-
-It took 28 hours on my laptop to run for all possible $h$.
-
-Good enough!
 
 ---
 
