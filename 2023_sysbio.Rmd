@@ -589,7 +589,7 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
 ---
 
-## The first problem: High cardinality categorical predictors.
+## Problem 1: High cardinality categorical predictors.
 
 - When we build a tree, at each branching point, we need to choose a gene and decide which alleles should go
 down each branch in order to best separate the sources.
@@ -602,7 +602,8 @@ down each branch in order to best separate the sources.
 
 ---
 
-## The second problem: Unique alleles
+.left-code[
+## Problem 2: Unique alleles
 
 - Lots of alleles are unique to the test set (we only see them in humans).
 
@@ -610,12 +611,17 @@ down each branch in order to best separate the sources.
 
 - Lots of the 'unique alleles' are really similar (one SNP difference) from another
 allele we have seen before.
+]
 
-<TODO: Genes we can use plot>
+.right-plot[
+```{r}
+plot_right
+```
+]
 
 ---
 
-## The second problem: Unique alleles
+## Problem 2: Unique alleles
 
 - We have unique alleles in the test set (human isolates).
 
@@ -631,7 +637,7 @@ allele we have seen before.
 
 class: inverse, middle
 
-# Encoding categorical variables
+# Solution 1: Encoding categorical variables
 
 ---
 
@@ -651,7 +657,7 @@ class: inverse, middle
 
 ---
 
-.left-code[## Numeric encoding: Consequences
+## Numeric encoding: Consequences
 
 - The alleles are already numeric, so just treat them as numbers.
 
@@ -662,41 +668,229 @@ class: inverse, middle
 - So consecutive allele numbers often belong to the same source.
 
 - A tree based model will exploit this well!
+
+```{r, fig.dim=c(10,2)}
+camp0864 <- read_csv("data/camp0864.csv")
+camp0864 |> arrange(Allele) |> pull(Source) |> rle() -> foo
+dat_for_plot <- tibble(n = foo$lengths, source = foo$values) |>
+  slice(40:60) |> uncount(n) |> tibble::rowid_to_column()
+
+ggplot(dat_for_plot) +
+  geom_rect(aes(xmin=rowid, xmax=rowid+1, ymin=0, ymax=1, fill=source), col='transparent') +
+  guides(fill='none') +
+  labs(x="Allele", y=NULL,
+       title="Alleles by source for CAMP0864") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
+
+---
+
+.left-code[
+## Numeric encoding: Consequences
+
+Arning et. al. (unknowingly) used this encoding.
+
+Results from their work are less impressive when we randomise the
+allele labels.
 ]
 
 .right-plot[
 ```{r}
-camp0864 <- read_csv("data/camp0864.csv")
-ggplot(camp0864) +
-  geom_point(aes(x=Allele, y=Source, col=Source)) +
-  guides(col='none') +
-  labs(y=NULL, title="CAMP0864 submissions to PubMLST")
+arning <- read_csv("data/arning_shuffle.csv")
+ggplot(arning) +
+  geom_point(aes(x=Labels, y=value, col=Method), position=position_dodge(width=0.25)) +
+  facet_wrap(vars(Measure), nrow=2) +
+  labs(x=NULL, y=NULL, col=NULL) +
+  theme(legend.position = 'bottom')
 ```
 ]
 
 ---
 
-## Numeric encoding: Consequences
+## Target encoding
 
-Arning et. al. (unknowingly) used this encoding.
+.left-code[
+- For 2 sources we can do it much faster via **target encoding**.
 
-Results from their work are rather less impressive when we randomise the
-allele labels.
+- For each gene, get the allele by class contingency table.
 
-<TODO: Arning figure>
+- Convert to proportions.
+
+- Order the alleles by the proportion in class A and treat it as ordinal.
+
+- We thus have a numeric variable so need only consider $K-1$ possible split points rather than $2^{K-1}$.
+]
+
+.right-plot[
+```{r}
+set.seed(3)
+tab <- data.frame(prop = runif(5), count=rpois(5, lambda=10)) |>
+  mutate(Allele = 1:5, A = round(prop*count), B = count-A) |>
+  select(Allele, A, B)
+
+tab |> knitr::kable()
+```
+]
 
 ---
-
 
 ## Target encoding
 
-- For 2 sources we can do it much faster ($K$ rather than $2^K$) via **target encoding**. Replace the categorical variable with the proportion of training isolates that are the first source in each allele. We then have a numeric variable so need only consider $K-1$ possible split points.
+.left-code[
+- For 2 sources we can do it much faster via **target encoding**.
 
-<TODO: Add demo of this>
+- For each gene, get the allele by class contingency table.
+
+- Convert to proportions.
+
+- Order the alleles by the proportion in class A and treat it as ordinal.
+
+- We thus have a numeric variable so need only consider $K-1$ possible split points rather than $2^{K-1}$.
+]
+
+.right-plot[
+```{r}
+tab2 <- tab |> pivot_longer(A:B) |> group_by(Allele) |> mutate(value = round(value/sum(value), 2)) |> pivot_wider()
+tab2 |> knitr::kable()
+```
+]
 
 ---
 
+## Target encoding
 
+.left-code[
+- For 2 sources we can do it much faster via **target encoding**.
+
+- For each gene, get the allele by class contingency table.
+
+- Convert to proportions.
+
+- Order the alleles by the proportion in class A and treat it as ordinal.
+
+- We thus have a numeric variable so need only consider $K-1$ possible split points rather than $2^{K-1}$.
+]
+
+.right-plot[
+```{r}
+tab2 |> arrange(A) |> knitr::kable()
+```
+]
+
+---
+
+## More than 2 sources
+
+.left-code[
+- Coppersmith (year) extended this to multiple sources.
+
+- Order by the scores of the first principal component of the proportioned contingency table.
+
+- It's not perfect (not equivalent to the 2-partition) but works fairly well, and again means just $K-1$ split points.
+
+- This is used in `ranger` in R.
+]
+
+.right-plot[
+```{r}
+set.seed(4)
+tab3 <- data.frame(allele = 1:7, size = rpois(7, lambda=10)) |>
+  mutate(count = map(size, ~rmultinom(1, ., prob = c(1,1,1)))) |>
+  unnest(count) |>
+  group_by(allele) |>
+  mutate(row = row_number()) |>
+  pivot_wider(names_from=row, values_from=count) |>
+  select(-size) |> set_names(c("allele", LETTERS[1:3])) |>
+  as.data.frame()
+
+tab3 |> knitr::kable()
+```
+]
+
+---
+
+## More than 2 sources
+
+.left-code[
+- Coppersmith (year) extended this to multiple sources.
+
+- Order by the scores of the first principal component of the proportioned contingency table.
+
+- It's not perfect (not equivalent to the 2-partition) but works fairly well, and again means just $K-1$ split points.
+
+- This is used in `ranger` in R.
+]
+
+.right-plot[
+```{r}
+tab4 <- tab3 |> pivot_longer(-allele) |> group_by(allele) |> mutate(value = round(value/sum(value),2)) |>
+  pivot_wider() |> as.data.frame()
+
+tab4 |> knitr::kable()
+```
+]
+
+---
+
+.left-code[
+## More than 2 sources
+
+- Coppersmith (year) extended this to multiple sources.
+
+- Order by the scores of the first principal component of the proportioned contingency table.
+
+- It's not perfect (not equivalent to the 2-partition) but works fairly well, and again means just $K-1$ split points.
+
+- This is used in `ranger` in R.
+]
+
+.right-plot[
+```{r}
+tab4pc <- prcomp(tab4 |> select(A:C))
+
+dx <- tab4pc$rotation[1,1]/3
+dy <- tab4pc$rotation[2,1]/3
+ggplot(tab4) +
+  geom_point(aes(x=A, y=B)) +
+  geom_text(aes(x=A, y=B, label=allele), nudge_x=0.015, nudge_y=0.015) +
+  geom_segment(aes(x=mean(A)-dx, y=mean(B)-dy, xend=mean(A)+dx,
+                   yend=mean(B)+dy), col='darkred',
+               arrow = arrow(length=unit(0.1, "inches"), type="closed", ends="both")) +
+  annotate("text", x=mean(tab4$A)+0.02, y=mean(tab4$B)+0.02, label="PC1", col="darkred") +
+  labs(x = "P(class A)", y = "P(class B)")
+```
+]
+
+
+---
+
+## More than 2 sources
+
+.left-code[
+- Coppersmith (year) extended this to multiple sources.
+
+- Order by the scores of the first principal component of the proportioned contingency table.
+
+- It's not perfect (not equivalent to the 2-partition) but works fairly well, and again means just $K-1$ split points.
+
+- This is used in `ranger` in R.
+]
+
+.right-plot[
+```{r}
+tab4pc <- prcomp(tab4 |> select(A:C))
+
+tab4 |> mutate(order = tab4pc$x[,1]) |>
+  arrange(order) |>
+  select(-order) |>
+  knitr::kable()
+```
+]
+
+---
 
 ## Alternative encoding: Supplementary data
 
@@ -739,7 +933,3 @@ allele labels.
 class: middle, inverse
 
 # Questions?
-
-```{r, fig.dim=c(7,5), out.width='70%', fig.align='center'}
-plot_dark
-```
