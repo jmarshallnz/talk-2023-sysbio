@@ -600,10 +600,6 @@ down each branch in order to best separate the sources.
 
 - If the median $K$ is 48, this is a problem.
 
-- For 2 sources we can do it much faster ($K$ rather than $2^K$) via **target encoding**. Replace the categorical variable with the proportion of training isolates that are the first source in each allele. We then have a numeric variable so need only consider $K-1$ possible split points.
-
-<TODO: Add demo of this>
-
 ---
 
 ## The second problem: Unique alleles
@@ -631,11 +627,15 @@ allele we have seen before.
 
 - And even within a tree (where the data are all 'observed'), by the time we get down a few branches we may no longer have any isolates of a certain allele left, so can't train with that allele.
 
-- **If we use an 'encoding' scheme to deal with the high cardinality problem, how should we encode things we haven't yet seen?**
+---
+
+class: inverse, middle
+
+# Encoding categorical variables
 
 ---
 
-## Other encoding systems
+## Encoding categorical variables as numeric
 
 - One hot encoding: Replace the categorical predictor with binary indicators.
 
@@ -647,6 +647,7 @@ allele we have seen before.
 
     - The trees and forest can split a numeric variable wherever they like, so order maybe doesn't matter much?
     - Alleles are already numeric, right?
+    - Any allele we haven't seen is already encoded as some other number.
 
 ---
 
@@ -656,8 +657,7 @@ allele we have seen before.
 
 - Allele numbers are defined based on the order that isolates are submitted to PubMLST.
 
-- Researchers do not submit isolates randomly to PubMLST. They're often done in 'chunks' of isolates
-from the same source.
+- Researchers do not submit isolates randomly to PubMLST. They're often done in 'chunks' of isolates from the same source.
 
 - So consecutive allele numbers often belong to the same source.
 
@@ -686,6 +686,17 @@ allele labels.
 <TODO: Arning figure>
 
 ---
+
+
+## Target encoding
+
+- For 2 sources we can do it much faster ($K$ rather than $2^K$) via **target encoding**. Replace the categorical variable with the proportion of training isolates that are the first source in each allele. We then have a numeric variable so need only consider $K-1$ possible split points.
+
+<TODO: Add demo of this>
+
+---
+
+
 
 ## Alternative encoding: Supplementary data
 
