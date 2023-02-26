@@ -427,6 +427,8 @@ class: middle, inverse
 
 ## What if we have more genes?
 
+- More recent studies (SACNZ) have used whole genome sequencing, and looked to see if we can distinguish cattle versus sheep.
+
 - With higher genomic precision, the counts used for the Dirichlet model will eventually drop to 1 of each as each isolate is likely unique.
 
 - Worse than that, the human isolates will differ from all source isolates, so the source counts for them will be 0, so we lose all ability to discriminate.
@@ -439,12 +441,13 @@ class: middle, inverse
 
 ## Island model attribution with more genes
 
-```{r, fig.dim=c(7, 5), out.width='70%'}
+```{r, fig.dim=c(8, 5), out.width='80%'}
 attr <- read_csv("data/dirichlet_island/many_genes_per_source.csv")
 best_attr <- attr %>% filter(str_detect(Genes, "Best"), str_detect(Data, "Full")) %>%
   extract(Genes, into='Genes', regex="([0-9]+)", convert=TRUE) %>%
   spread(quantile, value)
 
+source_cols2 <- c(Poultry = "brown", Beef = "steelblue4", Sheep = "steelblue1")
 ggplot(best_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
   geom_ribbon(aes(ymin=`0.025`, ymax=`0.975`), alpha=0.3) +
   geom_ribbon(aes(ymin=`0.25`, ymax=`0.75`), alpha=0.3) +
@@ -452,7 +455,8 @@ ggplot(best_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
   scale_y_continuous("Attribution of human cases", labels = scales::percent, expand=c(0,0), limits = c(-1,1)) +
   coord_cartesian(ylim = c(0,1)) +
   scale_x_continuous(limits = c(5,100), expand=c(0,0)) +
-  guides(col = 'none', fill='none')
+  scale_colour_manual(values = source_cols2) +
+  scale_fill_manual(values = source_cols2)
 ```
 
 ---
@@ -461,13 +465,13 @@ ggplot(best_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
 The island likelihood for each type is complicated, but if we have $g$ genes is approximately
 $$
-p(\mathsf{st} \mid m) \approx m^d (1-m)^{g-d}
+p(\mathsf{st} \mid m, \tau) \approx \tau m^d (1-m)^{g-d}
 $$
-where $m$ is a combination of mutation and recombination probabilities, and $d$ is the average number of loci that differ between isolate pairs.
+where $m$ is a combination of mutation and recombination probabilities, $\tau$ is a migration probability, and $d$ is the average number of loci that differ between isolate pairs.
 
 This is maximised when $m = d/g$ so that
 $$
-p(\mathsf{st} \mid m) \approx  f(m)^g
+p(\mathsf{st} \mid m, \tau) \approx  \tau f(m)^g
 $$
 where
 $$
@@ -489,7 +493,7 @@ ggplot(df, aes(x=g, y=df)) + geom_line(lwd=2) +
   scale_y_continuous(expr, expand=c(0,0), lim=c(0,40)) + scale_x_continuous("Number of genes", expand=c(0,0))
 ```
 
-The island model just ends up assigning everything to the lower diversity source.
+The island model just ends up assigning everything to the lower diversity source as it's way more likely that everything evolved on that source then migrated.
 
 ---
 
@@ -505,7 +509,7 @@ The island model just ends up assigning everything to the lower diversity source
 
 ## Stable attribution as gene count increases
 
-```{r, fig.dim=c(7, 5), out.width='70%'}
+```{r, fig.dim=c(8, 5), out.width='80%'}
 common_attr <- read_csv("data/dirichlet_island/many_genes_common.csv")
 common_best <- common_attr %>% filter(str_detect(Genes, "Best"), str_detect(Data, "Full")) %>%
   extract(Genes, into='Genes', regex="([0-9]+)", convert=TRUE) %>%
@@ -518,7 +522,8 @@ ggplot(common_best, aes(x=Genes, y=`0.5`, fill=Source)) +
   scale_y_continuous("Attribution of human cases", labels = scales::percent, expand=c(0,0), limits = c(-1,1)) +
   coord_cartesian(ylim = c(0,1)) +
   scale_x_continuous(limits = c(5,100), expand=c(0,0)) +
-  guides(col = 'none', fill='none')
+  scale_colour_manual(values = source_cols2) +
+  scale_fill_manual(values = source_cols2)
 ```
 
 ---
@@ -551,7 +556,9 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
   geom_point(size=2, shape=21, col='black') +
   scale_y_continuous("Attribution of human cases", labels = scales::percent, expand=c(0,0), limits=c(0,1)) +
  # scale_x_discrete(limits = c(0,100), expand=c(0,0)) +
-  guides(col = 'none', fill='none') +
+  scale_colour_manual(values = source_cols2) +
+  scale_fill_manual(values = source_cols2) +
+  guides(col='none', fill='none') +
   theme(axis.title.x = element_blank())
 ```
 
@@ -559,7 +566,7 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
 ## So where are we?
 
-- We have 1342 core genes available to us.
+- We have 1343 core genes available to us.
 
 - Our goal is to classify human isolates as coming from a set of sources.
 
@@ -568,6 +575,12 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 - Picking 7 random genes is just as good as MLST; so the genes are correlated.
 
 - **Why not try some machine learning techniques that cope with high dimensional, correlated predictors?**
+
+---
+
+class: middle, inverse
+
+# Random Forests
 
 ---
 
@@ -589,6 +602,7 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
 ---
 
+.left-code[
 ## Problem 1: High cardinality categorical predictors.
 
 - When we build a tree, at each branching point, we need to choose a gene and decide which alleles should go
@@ -599,7 +613,17 @@ down each branch in order to best separate the sources.
 - The number of subsets to consider is $2^{K-1}$ where $K$ is the number of alleles.
 
 - If the median $K$ is 48, this is a problem.
+]
 
+.right-plot[
+```{r}
+dat <- data.frame(y = c(2,3,6, 7, 9), x = 1:5)
+library(rpart)
+rp <- rpart(y ~ x, data=dat, control=list(minsplit=1, cp = 0.000001, minbucket=1))
+plot(rp)
+```
+
+]
 ---
 
 .left-code[
@@ -673,11 +697,16 @@ class: inverse, middle
 camp0864 <- read_csv("data/camp0864.csv")
 camp0864 |> arrange(Allele) |> pull(Source) |> rle() -> foo
 dat_for_plot <- tibble(n = foo$lengths, source = foo$values) |>
-  slice(40:60) |> uncount(n) |> tibble::rowid_to_column()
+  slice(40:60) |> uncount(n) |> tibble::rowid_to_column() |>
+  mutate(source = case_when(source == "Chicken" ~ "Poultry",
+                            source == "Sheep" ~ "Ruminants",
+                            source == "Cattle" ~ "Other",
+                            TRUE ~ "Water"))
 
 ggplot(dat_for_plot) +
   geom_rect(aes(xmin=rowid, xmax=rowid+1, ymin=0, ymax=1, fill=source), col='transparent') +
   guides(fill='none') +
+  scale_fill_manual(values = source_cols) +
   labs(x="Allele", y=NULL,
        title="Alleles by source for CAMP0864") +
   theme(axis.text.y = element_blank(),
@@ -699,12 +728,15 @@ allele labels.
 
 .right-plot[
 ```{r}
-arning <- read_csv("data/arning_shuffle.csv")
+arning <- read_csv("data/arning_shuffle.csv") |> mutate(Method = fct_recode(Method, Published = "Paper Order")) |>
+  mutate(Measure = fct_recode(Measure, `Positive Predictive Value` = "Precision", Sensitivity = "Recall"))
 ggplot(arning) +
   geom_point(aes(x=Labels, y=value, col=Method), position=position_dodge(width=0.25)) +
   facet_wrap(vars(Measure), nrow=2) +
   labs(x=NULL, y=NULL, col=NULL) +
-  theme(legend.position = 'bottom')
+  theme(legend.position = 'bottom') +
+  scale_colour_manual(values = c(Published = 'black', Reshuffled = 'darkred')) +
+  scale_y_continuous(limits = c(0,1))
 ```
 ]
 
@@ -914,7 +946,8 @@ bias |> filter(uses_unique == "No", Ordering == "Poultry", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Precision")
+  labs(x=NULL, y="Sensitivity") +
+  scale_colour_manual(values = source_cols2)
 ```
 ]
 
@@ -943,7 +976,8 @@ bias |> filter(uses_unique == "Yes", Ordering == "Poultry", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Precision")
+  labs(x=NULL, "Sensitivity") +
+  scale_colour_manual(values = source_cols2)
 ```
 ]
 
@@ -974,7 +1008,8 @@ bias |> filter(uses_unique == "Yes", Ordering == "Sheep", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Precision")
+  labs(x=NULL, y="Sensitivity") +
+  scale_colour_manual(values = source_cols2)
 ```
 ]
 
@@ -984,9 +1019,9 @@ bias |> filter(uses_unique == "Yes", Ordering == "Sheep", method=="ranger") |>
 
 - Ranger orders using the Coppersmith method, and new levels are added to the end of the table.
 
-- This associates new levels with the second source: changing the order of the outcome class then changes this association.
+- This associates new levels with the first source: changing the order of the outcome class then changes this association.
 
-```{r, fig.dim=c(10, 3)}
+```{r, fig.dim=c(10, 4)}
 bias |> filter(uses_unique == "Yes", method=="ranger") |>
   mutate(Ordering = paste(Ordering, "first")) |>
   ggplot() +
@@ -996,7 +1031,8 @@ bias |> filter(uses_unique == "Yes", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Precision")
+  labs(x=NULL, y="Sensitivity") +
+  scale_colour_manual(values = source_cols2)
 ```
 
 ---
@@ -1005,9 +1041,9 @@ bias |> filter(uses_unique == "Yes", method=="ranger") |>
 
 - If we assume apriori that each source is equally likely for unique alleles, then they get a PCA score of 0.
 
-- Inserting them there gets rid of the bias towards the second source.
+- Inserting them at correct place in the table, rather than at the end, eliminates the bias towards the first source.
 
-```{r, fig.dim=c(10, 3)}
+```{r, fig.dim=c(10, 4)}
 bias |> filter(uses_unique == "Yes") |>
   mutate(Ordering = paste(Ordering, "first")) |>
   arrange(desc(method)) |>
@@ -1020,11 +1056,54 @@ bias |> filter(uses_unique == "Yes") |>
   scale_colour_manual(values = c(CA = "darkred", ranger="black")) +
   scale_alpha_manual(values = c(CA = 1, ranger=0.2)) +
   guides(shape = 'none', colour='none', alpha='none') +
-  labs(x=NULL, y=NULL)
+  labs(x=NULL, y="Sensitivity")
 ```
 
 ---
 
+.left-code-wide[
+## Alternative encoding: Supplementary data
+
+- We have the sequences of each allele.
+
+- So we know how close each allele is to each other genetically.
+
+- Genetic closeness may be associated with likelihood of being observed on the same source.
+
+- Use genetic distance to encode order via **principal coordinate ordination (PCO)**.
+
+- For new alleles we have the sequence, so can place them in PCO space and thus in the
+correct place in the ordered alleles.
+
+- The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
+
+- Downside: If genetic closeness does not indicate similar sources, this won't work well.
+]
+
+.right-plot-narrow[
+```{r, fig.dim=c(3.2, 4.8)}
+pco_cap <- read_csv("data/forest/cap_pco.csv") |>
+  mutate(prediction = as.factor(prediction))
+pco_cap |> filter(Ordering == "Sheep") |>
+  group_by(method, Source, prediction) |>
+  summarise(n = sum(n), N = sum(N), prop = n/N) |>
+  ungroup() |>
+  mutate(method = fct_recode(method, `Target encoding` = "CA",
+                           `Genomic encoding` = "PCO")) |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, col=method), position=position_dodge(width=0.2)) +
+#  geom_line(aes(x=as.numeric(prediction), y=prop, group=paste(method), col=method), alpha=0.2) +
+#  facet_wrap(vars(uses_unique)) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_colour_manual(values=c("black", "darkred")) +
+  labs(x=NULL, y="Sensitivity", col=NULL) +
+  theme(legend.position = 'bottom')
+```
+]
+
+---
+
+.left-code-wide[
 ## Alternative encoding: Supplementary data
 
 - We have the sequences of each allele.
@@ -1040,45 +1119,44 @@ correct place in the ordered alleles.
 
 - The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
 
-- Downside: If genetic closeness does not indicate similar sources, this won't work well!
+- Downside: If genetic closeness does not indicate similar sources, this won't work well.
 
-```{r}
-pco_cap <- read_csv("data/forest/cap_pco.csv") |>
-  mutate(prediction = as_factor(prediction))
-pco_cap |> filter(Ordering == "Sheep") |>
-  group_by(method, Source, prediction) |>
-  summarise(n = sum(n), N = sum(N), prop = n/N) |>
-  ggplot() +
-  geom_point(aes(x=prediction, y=prop, col=method), position=position_dodge(width=0.2)) +
-  geom_line(aes(x=as.numeric(prediction), y=prop, group=paste(method), col=method), alpha=0.2) +
-#  facet_wrap(vars(uses_unique)) +
-  scale_y_continuous(limits=c(0,1)) +
-  scale_colour_manual(values=c(CA="black", PCO="darkred")) +
-  labs(x=NULL, y="Precision") +
-  guides(col='none')
-```
+- **The PCO method results in closer attribution results for those isolates that have lots of missing alleles**
+]
 
----
-
-```{r}
-read_csv("data/forest/attribution.csv") |>
-  mutate(prediction = as_factor(prediction)) |>
+.right-plot-narrow[
+```{r, fig.dim=c(3.2, 4.8)}
+attr <- read_csv("data/forest/attribution.csv") |>
+  mutate(prediction = as.factor(prediction)) |>
   mutate(uses_unique = uses_unique > 0) |>
   group_by(method, row, uses_unique) |>
   count(prediction) |>
+  add_tally(n)
+
+rows <- attr |>
+  filter(uses_unique, nn > 300) |> pull(row) |> unique()
+
+attr |> filter(row %in% rows) |>
   slice_max(n, n=1) |>
+  ungroup() |>
+  mutate(method = fct_recode(method, `Target encoding` = "ca",
+                             `Genomic encoding` = "pco")) |>
   group_by(method, uses_unique) |>
   count(prediction) |> mutate(prop = n/sum(n)) |>
+  ungroup() |>
+  mutate(unique = case_when(uses_unique ~ "Unique Alleles", TRUE ~ "Observed Alleles")) |>
   ggplot() + 
-  geom_point(aes(x=prediction, y=prop, col=uses_unique)) +
-  facet_wrap(vars(method))
+  geom_point(aes(x=prediction, y=prop, col=unique), position=position_dodge(width=0.2)) +
+  scale_color_manual(values = c('steelblue', 'brown')) +
+  facet_wrap(vars(method)) +
+  labs(x=NULL, y="Proportion of Human Cases", col=NULL) +
+  theme(legend.position='bottom')
 ```
-
-## What Helen's plan is
+]
 
 ---
 
-## What Helen showed
+## Summary
 
 - Need a way to deal with categorical predictors with a large number of factors.
 
