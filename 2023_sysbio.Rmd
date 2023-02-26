@@ -1161,8 +1161,7 @@ ggplot(dat |> filter(allele != "13")) +
 
 - Use genetic distance to encode order via principal coordinate ordination (PCO).
 
-- **For new alleles we have the sequence, so can place them in PCO space and thus in the
-correct place in the ordered alleles.**
+- **For new alleles we compute the distance to observed alleles to place them in PCO space and thus order them correctly.**
 ]
 
 .right-plot-narrow[
@@ -1193,16 +1192,16 @@ ggplot(dat) +
 
 ---
 
-.left-code-wide[
+.left-code[
 ## Encode by genetic distance
 
 - The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
 
-- But, if genetic closeness does not indicate similar sources, this won't work well.
+- But, if genetic closeness does not associate with source closeness, we may not get a better result.
 ]
 
-.right-plot-narrow[
-```{r, fig.dim=c(3.2, 4.8)}
+.right-plot[
+```{r}
 pco_cap <- read_csv("data/forest/cap_pco.csv") |>
   mutate(prediction = as.factor(prediction))
 pco_cap |> filter(Ordering == "Sheep") |>
@@ -1225,9 +1224,9 @@ pco_cap |> filter(Ordering == "Sheep") |>
 ---
 
 .left-code[
-## Encode by genetic distance
+## Attribution
 
-The PCO method results in closer attribution results for those isolates that have lots of missing alleles.
+For isolates with many unique alleles, the PCO method produces consistent predictions between trees that utilise the unique alleles and trees that don't.
 ]
 
 .right-plot[
