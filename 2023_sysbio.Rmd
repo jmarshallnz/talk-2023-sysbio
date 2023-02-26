@@ -892,6 +892,139 @@ tab4 |> mutate(order = tab4pc$x[,1]) |>
 
 ---
 
+.left-code-wide[
+## Random forest fit
+
+- Split the source data into 5 sets.
+
+- Use cross-validation to assess precision.
+
+- Reasonably good effort for all sources.
+]
+
+.right-plot-narrow[
+```{r, fig.dim=c(3.2,4.8)}
+bias <- read_csv("data/forest/bias.csv") |>
+  mutate(prediction = as_factor(prediction), Source = as_factor(Source))
+bias |> filter(uses_unique == "No", Ordering == "Poultry", method=="ranger") |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, shape=Source==prediction, col=Source)) +
+  geom_line(aes(x=as.numeric(prediction), y=prop, group=Fold), alpha=0.2) +
+  facet_wrap(vars(Source), ncol=1) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_shape_manual(values = c("circle filled", "circle")) +
+  guides(shape = 'none', colour='none') +
+  labs(x=NULL, y="Precision")
+```
+]
+
+---
+
+
+.left-code-wide[
+## Random forest fit
+
+- Split the source data into 5 sets.
+
+- Use cross-validation to assess precision.
+
+- Reasonably good effort for all sources.
+
+- For the isolates with unique alleles, poultry still gets assigned well.
+]
+
+.right-plot-narrow[
+```{r, fig.dim=c(3.2,4.8)}
+bias |> filter(uses_unique == "Yes", Ordering == "Poultry", method=="ranger") |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, shape=Source==prediction, col=Source)) +
+  geom_line(aes(x=as.numeric(prediction), y=prop, group=Fold), alpha=0.2) +
+  facet_wrap(vars(Source), ncol=1) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_shape_manual(values = c("circle filled", "circle")) +
+  guides(shape = 'none', colour='none') +
+  labs(x=NULL, y="Precision")
+```
+]
+
+---
+
+
+.left-code-wide[
+## Random forest fit
+
+- Split the source data into 5 sets.
+
+- Use cross-validation to assess precision.
+
+- Reasonably good effort for all sources.
+
+- For the isolates with unique alleles, poultry still gets assigned well.
+
+- If we change the order of the sources though, poultry does much worse!
+]
+
+.right-plot-narrow[
+```{r, fig.dim=c(3.2,4.8)}
+bias |> filter(uses_unique == "Yes", Ordering == "Sheep", method=="ranger") |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, shape=Source==prediction, col=Source)) +
+  geom_line(aes(x=as.numeric(prediction), y=prop, group=Fold), alpha=0.2) +
+  facet_wrap(vars(Source), ncol=1) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_shape_manual(values = c("circle filled", "circle")) +
+  guides(shape = 'none', colour='none') +
+  labs(x=NULL, y="Precision")
+```
+]
+
+---
+
+## What is going on?
+
+- Ranger orders using the Coppersmith method, and new levels are added to the end of the table.
+
+- This associates new levels with the second source: changing the order of the outcome class then changes this association.
+
+```{r, fig.dim=c(10, 3)}
+bias |> filter(uses_unique == "Yes", method=="ranger") |>
+  mutate(Ordering = paste(Ordering, "first")) |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, shape=Source==prediction, col=Source)) +
+  geom_line(aes(x=as.numeric(prediction), y=prop, group=Fold), alpha=0.2) +
+  facet_grid(vars(Source), vars(Ordering)) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_shape_manual(values = c("circle filled", "circle")) +
+  guides(shape = 'none', colour='none') +
+  labs(x=NULL, y="Precision")
+```
+
+---
+
+## Where should unique alleles be in the table?
+
+- If we assume apriori that each source is equally likely for unique alleles, then they get a PCA score of 0.
+
+- Inserting them there gets rid of the bias towards the second source.
+
+```{r, fig.dim=c(10, 3)}
+bias |> filter(uses_unique == "Yes") |>
+  mutate(Ordering = paste(Ordering, "first")) |>
+  arrange(desc(method)) |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, shape=Source==prediction, col=method, alpha=method)) +
+  geom_line(aes(x=as.numeric(prediction), y=prop, group=paste(Fold, method), col=method, alpha=method), size=0.1) +
+  facet_grid(vars(Source), vars(Ordering)) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_shape_manual(values = c("circle filled", "circle")) +
+  scale_colour_manual(values = c(CA = "darkred", ranger="black")) +
+  scale_alpha_manual(values = c(CA = 1, ranger=0.2)) +
+  guides(shape = 'none', colour='none', alpha='none') +
+  labs(x=NULL, y=NULL)
+```
+
+---
+
 ## Alternative encoding: Supplementary data
 
 - We have the sequences of each allele.
@@ -902,10 +1035,44 @@ tab4 |> mutate(order = tab4pc$x[,1]) |>
 
 - Use genetic distance to encode order via principal coordinate ordination (PCO).
 
+- For new alleles we have the sequence, so can place them in PCO space and thus in the
+correct place in the ordered alleles.
+
+- The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
+
+- Downside: If genetic closeness does not indicate similar sources, this won't work well!
+
+```{r}
+pco_cap <- read_csv("data/forest/cap_pco.csv") |>
+  mutate(prediction = as_factor(prediction))
+pco_cap |> filter(Ordering == "Sheep") |>
+  group_by(method, Source, prediction) |>
+  summarise(n = sum(n), N = sum(N), prop = n/N) |>
+  ggplot() +
+  geom_point(aes(x=prediction, y=prop, col=method), position=position_dodge(width=0.2)) +
+  geom_line(aes(x=as.numeric(prediction), y=prop, group=paste(method), col=method), alpha=0.2) +
+#  facet_wrap(vars(uses_unique)) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_colour_manual(values=c(CA="black", PCO="darkred")) +
+  labs(x=NULL, y="Precision") +
+  guides(col='none')
+```
+
 ---
 
-
-
+```{r}
+read_csv("data/forest/attribution.csv") |>
+  mutate(prediction = as_factor(prediction)) |>
+  mutate(uses_unique = uses_unique > 0) |>
+  group_by(method, row, uses_unique) |>
+  count(prediction) |>
+  slice_max(n, n=1) |>
+  group_by(method, uses_unique) |>
+  count(prediction) |> mutate(prop = n/sum(n)) |>
+  ggplot() + 
+  geom_point(aes(x=prediction, y=prop, col=uses_unique)) +
+  facet_wrap(vars(method))
+```
 
 ## What Helen's plan is
 
