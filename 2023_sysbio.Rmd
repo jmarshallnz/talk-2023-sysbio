@@ -1,7 +1,7 @@
 ---
 title: "More data != more better"
 subtitle: "The pitfalls of using high dimensional genomic data for source attribution"
-author: "Jonathan Marshall"
+author: "Jonathan Marshall, Sih Jing Liao, Helen Smith"
 output:
   xaringan::moon_reader:
     css: [default, default-fonts, "custom.css"]
@@ -1021,7 +1021,7 @@ bias |> filter(uses_unique == "Yes", Ordering == "Sheep", method=="ranger") |>
 
 - This associates new levels with the first source: changing the order of the outcome class then changes this association.
 
-```{r, fig.dim=c(10, 4)}
+```{r, fig.dim=c(10, 3.5)}
 bias |> filter(uses_unique == "Yes", method=="ranger") |>
   mutate(Ordering = paste(Ordering, "first")) |>
   ggplot() +
@@ -1043,7 +1043,7 @@ bias |> filter(uses_unique == "Yes", method=="ranger") |>
 
 - Inserting them at correct place in the table, rather than at the end, eliminates the bias towards the first source.
 
-```{r, fig.dim=c(10, 4)}
+```{r, fig.dim=c(10, 3.5)}
 bias |> filter(uses_unique == "Yes") |>
   mutate(Ordering = paste(Ordering, "first")) |>
   arrange(desc(method)) |>
@@ -1103,29 +1103,14 @@ pco_cap |> filter(Ordering == "Sheep") |>
 
 ---
 
-.left-code-wide[
+.left-code[
 ## Alternative encoding: Supplementary data
 
-- We have the sequences of each allele.
-
-- So we know how close each allele is to each other genetically.
-
-- Genetic closeness may be associated with likelihood of being observed on the same source.
-
-- Use genetic distance to encode order via principal coordinate ordination (PCO).
-
-- For new alleles we have the sequence, so can place them in PCO space and thus in the
-correct place in the ordered alleles.
-
-- The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
-
-- Downside: If genetic closeness does not indicate similar sources, this won't work well.
-
-- **The PCO method results in closer attribution results for those isolates that have lots of missing alleles**
+The PCO method results in closer attribution results for those isolates that have lots of missing alleles.
 ]
 
-.right-plot-narrow[
-```{r, fig.dim=c(3.2, 4.8)}
+.right-plot[
+```{r}
 attr <- read_csv("data/forest/attribution.csv") |>
   mutate(prediction = as.factor(prediction)) |>
   mutate(uses_unique = uses_unique > 0) |>
@@ -1144,7 +1129,7 @@ attr |> filter(row %in% rows) |>
   group_by(method, uses_unique) |>
   count(prediction) |> mutate(prop = n/sum(n)) |>
   ungroup() |>
-  mutate(unique = case_when(uses_unique ~ "Unique Alleles", TRUE ~ "Observed Alleles")) |>
+  mutate(unique = case_when(uses_unique ~ "Unique alleles", TRUE ~ "Observed alleles")) |>
   ggplot() + 
   geom_point(aes(x=prediction, y=prop, col=unique), position=position_dodge(width=0.2)) +
   scale_color_manual(values = c('steelblue', 'brown')) +
@@ -1158,19 +1143,15 @@ attr |> filter(row %in% rows) |>
 
 ## Summary
 
-- Need a way to deal with categorical predictors with a large number of factors.
+- Using more genes for source attribution doesn't necessarily help.
 
-    - There are scoring methods to convert factors to numeric scores.
-    - Could convert the factor to binary via indicators.
+- Models need to cope with lots of high cardinality categorical variables.
 
-- Need a way to deal with 'absent' levels: those alleles in humans that aren't in the sources.
+- Existing models break in ways that are sometimes subtle!
 
-    - How should they be scored in the scoring methods?
-    - Can we use auxiliary information (genetic distance between alleles) for the absent levels?
+- Paper: Lost in the Forest (H.L. Smith) https://www.biorxiv.org/content/10.1101/2022.09.12.507676v1
 
-- Paper: Lost in the Forest <link>
-
-    - Demonstrates existing scoring methods are biased, and presents a solution.
+    - Demonstrates existing encoding methods are biased, and presents a solution.
     - Shows how to use auxiliary information for the absent levels.
 
 ---
