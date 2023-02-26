@@ -1061,8 +1061,30 @@ bias |> filter(uses_unique == "Yes") |>
 
 ---
 
+## Encode by genetic distance
+.left-code[
+
+- We have the sequences of each allele.
+
+- So we know how close each allele is to each other genetically.
+
+- Genetic closeness may be associated with likelihood of being observed on the same source.
+]
+
+.right-plot[
+```{r}
+pco_dist <- read_csv("data/forest/pco_dist.csv")
+pco_dist |>
+  pivot_wider(names_from='allele2', values_from=distance) |>
+  tibble::column_to_rownames('allele') |>
+  knitr::kable()
+```
+]
+
+---
+
 .left-code-wide[
-## Alternative encoding: Supplementary data
+## Encode by genetic distance
 
 - We have the sequences of each allele.
 
@@ -1071,13 +1093,112 @@ bias |> filter(uses_unique == "Yes") |>
 - Genetic closeness may be associated with likelihood of being observed on the same source.
 
 - Use genetic distance to encode order via **principal coordinate ordination (PCO)**.
+]
 
-- For new alleles we have the sequence, so can place them in PCO space and thus in the
-correct place in the ordered alleles.
+.right-plot-narrow[
+```{r, fig.dim=c(3.2,4.8)}
+dat <- read_csv("data/forest/pco_coords.csv")
+edge_dat <- dat |> cross_join(dat |> select(allele2=allele, y1=x1,y2=x2)) |>
+  filter(x1 < y1) |>
+  left_join(pco_dist)
+
+ggplot(dat |> filter(allele != "13")) +
+  geom_point(aes(x=x1, y=x2)) +
+  geom_text(aes(x=x1, y=x2, label=allele), nudge_x=1, nudge_y=1) +
+  geom_segment(data=edge_dat |> filter(allele != "13", allele2 != "13"), aes(x=x1, y=x2, xend=y1, yend=y2), alpha=0.1) +
+  coord_equal(xlim=c(-12,15), ylim=c(-26,21)) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())
+```
+]
+
+---
+
+.left-code-wide[
+## Encode by genetic distance
+
+- We have the sequences of each allele.
+
+- So we know how close each allele is to each other genetically.
+
+- Genetic closeness may be associated with likelihood of being observed on the same source.
+
+- Use genetic distance to encode order via **principal coordinate ordination (PCO)**.
+]
+
+.right-plot-narrow[
+```{r, fig.dim=c(3.2,4.8)}
+datpc <- prcomp(dat |> select(x1,x2))
+
+dx <- datpc$rotation[1,1]*20
+dy <- datpc$rotation[2,1]*20
+
+ggplot(dat |> filter(allele != "13")) +
+  geom_point(aes(x=x1, y=x2)) +
+  geom_text(aes(x=x1, y=x2, label=allele), nudge_x=1, nudge_y=1) +
+  geom_segment(aes(x=mean(x1)-dx, y=mean(x2)-dy, xend=mean(x1)+dx,
+                   yend=mean(x2)+dy), col='darkred',
+               arrow = arrow(length=unit(0.1, "inches"), type="closed", ends="both")) +
+  annotate("text", x=mean(dat$x1)+2, y=mean(dat$x2)-1, label="PCO1", col="darkred") +
+  coord_equal(xlim=c(-12,15), ylim=c(-26,21)) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())
+```
+]
+
+---
+
+.left-code-wide[
+## Encode by genetic distance
+
+- We have the sequences of each allele.
+
+- So we know how close each allele is to each other genetically.
+
+- Genetic closeness may be associated with likelihood of being observed on the same source.
+
+- Use genetic distance to encode order via principal coordinate ordination (PCO).
+
+- **For new alleles we have the sequence, so can place them in PCO space and thus in the
+correct place in the ordered alleles.**
+]
+
+.right-plot-narrow[
+```{r, fig.dim=c(3.2,4.8)}
+datpc <- prcomp(dat |> select(x1,x2))
+
+dx <- datpc$rotation[1,1]*20
+dy <- datpc$rotation[2,1]*20
+
+ggplot(dat) +
+  geom_point(aes(x=x1, y=x2, col=allele == "13")) +
+  geom_text(aes(x=x1, y=x2, label=allele, col=allele=="13"), nudge_x=1, nudge_y=1) +
+  geom_segment(aes(x=mean(x1)-dx, y=mean(x2)-dy, xend=mean(x1)+dx,
+                   yend=mean(x2)+dy), col='darkred',
+               arrow = arrow(length=unit(0.1, "inches"), type="closed", ends="both"),
+               alpha=0.5) +
+  annotate("text", x=mean(dat$x1)+2, y=mean(dat$x2)-1, label="PCO1", col="darkred") +
+  geom_segment(data=edge_dat |> filter(allele == "13" | allele2 == "13"),
+               aes(x=x1, y=x2, xend=y1, yend=y2), col='steelblue') +
+  guides(colour = 'none') +
+  scale_colour_manual(values = c('black', 'steelblue')) +
+  coord_equal(xlim=c(-12,15), ylim=c(-26,21)) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())
+```
+]
+
+---
+
+.left-code-wide[
+## Encode by genetic distance
 
 - The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
 
-- Downside: If genetic closeness does not indicate similar sources, this won't work well.
+- But, if genetic closeness does not indicate similar sources, this won't work well.
 ]
 
 .right-plot-narrow[
@@ -1104,7 +1225,7 @@ pco_cap |> filter(Ordering == "Sheep") |>
 ---
 
 .left-code[
-## Alternative encoding: Supplementary data
+## Encode by genetic distance
 
 The PCO method results in closer attribution results for those isolates that have lots of missing alleles.
 ]

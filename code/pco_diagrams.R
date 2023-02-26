@@ -23,10 +23,44 @@ as.data.frame(iris.nmin) |>
   coord_equal()
 
 # Hmm, this isn't right?!?
+set.seed(3)
 as.data.frame(iris.nmin) |>
-  mutate(x1 = X1*cos(pi/3) - X2*sin(pi/3),
-         x2 = X1*sin(pi/3) + X1*cos(pi/3)) |>
-  ggplot() +
+  tibble::rowid_to_column() |>
+  filter(X1 < 25) |>
+  slice_sample(n=10) |>
+  mutate(x1 = X1*cos(pi/4) - X2*sin(pi/4),
+         x2 = X1*sin(pi/4) + X1*cos(pi/4)) |>
+  select(rowid, x1, x2) |>
+  left_join(data.frame(rowid=1:53, allele=rownames(d))) |>
+  select(allele, x1, x2) |>
+  write_csv("data/forest/pco_coords.csv")
+
+dat <- read_csv("data/forest/pco_coords.csv")
+
+d |> as.data.frame() |> rownames_to_column("allele") |> pivot_longer(-allele, names_to="allele2", values_to="distance") |>
+  semi_join(dat) |>
+  semi_join(dat, by = c('allele2' = 'allele')) |>
+  write_csv("data/forest/pco_dist.csv")
+
+edge_dat <- dat |> cross_join(dat |> select(allele2=allele, y1=x1,y2=x2)) |>
+  filter(x1 < y1) |>
+  left_join(read_csv("data/forest/pco_dist.csv"))
+
+ggplot(dat) +
   geom_point(aes(x=x1, y=x2)) +
-  coord_equal()
+  geom_text(aes(x=x1, y=x2, label=allele), nudge_x=1, nudge_y=1) +
+  geom_segment(data=edge_dat, aes(x=x1, y=x2, xend=y1, yend=y2), alpha=0.1) +
+  coord_equal() +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())
+
+ggplot(dat) +
+  geom_point(aes(x=x1, y=x2)) +
+  geom_segment(data=edge_dat, aes(x=x1, y=x2, xend=y1, yend=y2), alpha=0.1) +
+  coord_equal() +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())
+
 
