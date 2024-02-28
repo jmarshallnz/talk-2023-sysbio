@@ -1,7 +1,7 @@
 ---
 title: "More data != more better"
 subtitle: "The pitfalls of using high dimensional genomic data for source attribution"
-author: "Jonathan Marshall, Sih Jing Liao, Helen Smith"
+author: "Jonathan Marshall, Helen Smith"
 output:
   xaringan::moon_reader:
     css: [default, default-fonts, "custom.css"]
@@ -94,38 +94,7 @@ class: middle, inverse
 
 ---
 
-## New Zealand campylobacteriosis cases
-
-```{r nz_cases, fig.dim=c(10, 5)}
-ggplot(nz, aes(x=Date, y=Rate)) + geom_line(col='grey50') +
-  geom_smooth(span=0.5, col="steelblue", fill="steelblue", alpha=0.3) +
-  scale_y_continuous("Cases per 100,000 people per year", expand = c(0,0), lim=c(0,600)) +
-  scale_x_date(expand = c(0,0)) +
-  theme(axis.title.x = element_blank())
-```
-
----
-
-## Manawatu sentinel surveillance site
-
-```{r manawatu_map, fig.dim=c(10, 5)}
-manawatu = read_sf("maps/midcentral.shp")
-
-nzmg.proj = '+proj=nzmg +lat_0=-41.0 +lon_0=173.0 +x_0=2510000.0 +y_0=6023150.0 +ellps=intl +units=m +towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993 '
-
-nz.map = read_sf("maps/NZ_region-NZTM2000.shp", layer="NZ_region-NZTM2000") |>
-  st_make_valid()
-manawatu <- manawatu %>% st_set_crs(nzmg.proj)
-
-st_crs(manawatu) <- nzmg.proj
-ggplot() + geom_sf(data = nz.map, fill = "grey80", col=NA, stroke=0) +
-  geom_sf(data = manawatu, fill="steelblue", col = NA, stroke = 0) +
-  theme_void()
-```
-
----
-
-## Where are people getting it from?
+## Where are people getting campylobacteriosis from?
 
 <div align="center">
 <span class='inline'>
@@ -202,22 +171,8 @@ $$P(\mathsf{st}_h) = \sum_j P(\mathsf{st}_h~\mathsf{from~source}_j) P(\mathsf{so
 ## Adding statistics
 
 .big-math[
-$$P(\mathsf{st}_h) = \sum_j \underbrace{P(\mathsf{st}_h~\mathsf{from~source}_j)}_\text{genomic model} P(\mathsf{source}_j)$$
-]
-
----
-
-## Adding statistics
-
-.big-math[
 $$P(\mathsf{st}) = \sum_j \underbrace{P(\mathsf{st}_h~\mathsf{from~source}_j)}_\text{genomic model} \underbrace{P(\mathsf{source}_j)}_\text{attribution to source}$$
 ]
-
----
-
-class: inverse, middle
-
-# Genomic models
 
 ---
 
@@ -251,171 +206,34 @@ $$P(\mathsf{st}_h \mid j,X) = \sum_{c\in X} \frac{M_{S_cj}}{N_{S_c}} \prod_{l=1}
 
 ---
 
-## Asymmetric Island model
-
-Use the source isolates to estimate the unknown parameters:
-
-- The mutation probabilities $\mu_j$
-- Recombination probabilities $R_j$
-- Migration probabilities $M_{jk}$.
-
-using a leave one out pseudo-likelihood MCMC algorithm.
-
-Once we have these estimated, we can use all source sequences as candidates and estimate $P(\mathsf{st}_h~\mathsf{from~source}_j)$ for the observed human sequences (even those unobserved on the sources).
-
----
-
-## Dirichlet model
-
-Before we collect data, assume each type is equally likely for each source.
-
-```{r, fig.dim=c(10, 3.5)}
-set.seed(5)
-top50 <- sts %>% mutate(ST = fct_lump(factor(ST), n=49, w=Human)) %>%
-  gather(Source, Count, -ST) %>% 
-  group_by(ST, Source) %>% summarise(Count = sum(Count)) %>%
-  ungroup() %>% spread(Source, Count) %>%
-  mutate(ST = fct_reorder(ST, Human, .fun = identity, .desc=TRUE),
-                          ST = fct_relevel(ST, "Other", after = 50)) %>%
-  select(ST, Poultry) %>% uncount(Poultry) %>%
-  sample_n(100) %>% count(ST, name = "Poultry", .drop=FALSE) %>%
-  mutate(Prior = 1) %>%
-  gather(Source, Count, -ST) %>% mutate(Proportion = Count/sum(Count))
-scale_fact <- 1/sum(top50$Count)
-
-ggplot(top50 %>% filter(Source == "Prior"), aes(x=ST, y=Count)) + geom_col(fill="grey50") +
-  scale_y_continuous("Count", expand=c(0,0)) +
-  coord_cartesian(ylim = c(0,25)) +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(angle = 90, vjust=0.5))
-```
-
----
-
-## Dirichlet model
-
-Then add the observed counts.
-
-```{r, fig.dim=c(10, 3.5)}
-ggplot(top50, aes(x=ST, y=Count, fill=Source)) + geom_col() +
-  scale_y_continuous("Count", expand=c(0,0)) +
-  scale_fill_manual(values=c(Poultry = "steelblue", Prior = "grey40")) +
-  guides(fill='none') +
-  coord_cartesian(ylim = c(0,25)) +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(angle = 90, vjust=0.5))
-```
-
----
-
-## Dirichlet model
-
-And convert to proportions.
-
-```{r, fig.dim=c(10, 3.5)}  
-ggplot(top50, aes(x=ST, y=Proportion, fill=Source)) + geom_col() +
-  scale_y_continuous("Percent", labels = scales::percent_format(accuracy=1, suffix=""), expand=c(0,0)) +
-  scale_fill_manual(values=c(Poultry = "steelblue", Prior = "grey50")) +
-  guides(fill='none') +
-  coord_cartesian(ylim = c(0,25*scale_fact)) +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(angle = 90, vjust=0.5))
-```
-
----
-
-## Dirichlet model
-
-Get uncertainty directly.
-
-<div class='center-fig'>
-  <img src="figures/dirichlet_uncertainty.gif" style="height: 360px"/>
-</div>
-
----
-
-## Dirichlet model | S.J. Liao 2019
-
-The prior and data model are:
-
-$$
-\begin{aligned}
-\mathbf{\pi}_j &\sim \mathsf{Dirichlet}(\mathbf{\alpha}_j)\\
-\mathbf{X}_{j} &\sim \mathsf{Multinomial}(n_j, \mathbf{\pi}_j)
-\end{aligned}
-$$
-
-so that the posterior is
-$$
-\mathbf{\pi}_{j} \sim \mathsf{Dirichlet}(\mathbf{X}_j + \mathbf{\alpha}_j)
-$$
-
-where $\pi_j$ is the genotype distribution, $\mathbf{X}_j$ are the counts, and $\mathbf{\alpha}_j$ is the prior for source $j$.
-
----
-
-## Genotype distributions
-
-```{r, fig.dim=c(10, 5)}
-genotype_fit <- read_csv("data/dirichlet_island/genotypes.csv") %>%
-  mutate(Source = factor(Source, levels = c("Poultry", "Ruminants", "Other", "Water")))
-
-common_sts <- c(474, 45, 50, 53, 48, 61, 190, 42) #, 354, 520)
-plot_common <- genotype_fit %>% filter(ST %in% common_sts) %>%
-  mutate(ST = factor(ST, levels=common_sts, labels = paste0("ST-", common_sts)),
-         Source = fct_recode(Source, Rum = "Ruminants"))
-
-ggplot(plot_common) + geom_linerange(aes(x=Source, ymin = lci, ymax=uci, group=Model), position=position_dodge(0.5)) + 
-  geom_linerange(aes(x=Source, ymin = lcl, ymax = ucl, col=Model), size=2, position=position_dodge(0.5)) +
-  geom_point(aes(x=Source, y=m, fill=Model), position=position_dodge(0.5), shape=21, size=2) +
-  facet_wrap(~ST, nrow=2) +
-  xlab("") +
-  scale_y_continuous(name = "P(Source | ST)", limits=c(0,1), expand = c(0,0)) +
-  scale_fill_manual(values = c("steelblue2", "brown")) +
-  scale_colour_manual(values = c("steelblue2", "brown")) +
-  theme(legend.position = c(0.93,0.89),
-        legend.title = element_blank())
-```
-
----
-
-## Genotype distributions
-
-```{r, fig.dim=c(7, 5), out.width='70%'}
-sts <- c(403, 2343, 2026, 474)
-plot_weird <- genotype_fit %>% filter(ST %in% sts) %>%
-  mutate(ST = factor(ST, levels=sts, labels = paste0("ST-", sts)))
-
-ggplot(plot_weird) + geom_linerange(aes(x=Source, ymin = lci, ymax=uci, group=Model), position=position_dodge(0.5)) + 
-  geom_linerange(aes(x=Source, ymin = lcl, ymax = ucl, col=Model), size=2, position=position_dodge(0.5)) +
-  geom_point(aes(x=Source, y=m, fill=Model), position=position_dodge(0.5), shape=21, size=2) +
-  facet_wrap(~ST, nrow=2) +
-  xlab("") +
-  scale_y_continuous(name = "P(Source | ST)", limits=c(0,1), expand = c(0,0)) +
-  scale_fill_manual(values = c("steelblue2", "brown")) +
-  scale_colour_manual(values = c("steelblue2", "brown")) +
-  theme(legend.position = c(0.90,0.89),
-        legend.title = element_blank())
-```
-
----
-
+.left-code[
 ## Attribution results
 
-```{r, fig.dim=c(7, 4.5), out.width='70%'}
-overall <- read_csv("data/dirichlet_island/overall_attribution.csv") %>%
-  mutate(Source = fct_relevel(Source, "Other", after=2))
+- Use the source isolates to estimate mutation, recombination and migration parameters via MCMC.
 
-ggplot(overall) + 
-  geom_boxplot(aes(x=Source, lower = lcl, upper=ucl, ymin=lci, ymax=uci, middle=m, fill=Source), stat="identity", alpha=0.7, width=0.6) +
+- Using these estimates, compute $P(\mathsf{st}_h~\mathsf{from~source}_j)$ for the observed human sequences (even those unobserved on the sources).
+
+- Finally use MCMC to estimate the attribution proportions.
+]
+
+.right-plot[
+```{r}
+source_cols2 <- c(Poultry = "brown", Beef = "steelblue4", Sheep = "steelblue1")
+
+attr <- read_csv("data/dirichlet_island/many_genes_per_source.csv")
+attr |>
+  filter(Genes == "MLST") |>
+  pivot_wider(names_from=quantile, values_from=value) |>
+  ggplot() +
+  geom_boxplot(aes(x=Source, lower = `0.25`, upper=`0.75`, ymin=`0.025`, ymax=`0.975`, middle=`0.5`, fill=Source), stat="identity", alpha=0.7, width=0.6) +
   scale_y_continuous(name="Attributed cases", labels=scales::percent_format(), limits=c(0,1), expand=c(0,0)) +
-  scale_fill_manual(values = source_cols) +
-  facet_wrap(~Model) +
+  scale_fill_manual(values = source_cols2) +
   guides(fill='none', col='none') +
   theme(axis.title.x = element_blank(),
         legend.position = c(0.90,0.89),
         legend.title = element_blank())
 ```
+]
 
 ---
 
@@ -425,29 +243,22 @@ class: middle, inverse
 
 ---
 
+.left-code[
 ## What if we have more genes?
 
-- More recent studies (SACNZ) have used whole genome sequencing, and looked to see if we can distinguish cattle versus sheep.
-
-- With higher genomic precision, the counts used for the Dirichlet model will eventually drop to 1 of each as each isolate is likely unique.
-
-- Worse than that, the human isolates will differ from all source isolates, so the source counts for them will be 0, so we lose all ability to discriminate.
+- Recent studies (SACNZ) have used whole genome sequencing, and looked to see if we can distinguish cattle versus sheep.
 
 - In theory the Island model should still work.
 
 - But it... **doesn't :(**
+]
 
----
-
-## Island model attribution with more genes
-
-```{r, fig.dim=c(8, 5), out.width='80%'}
-attr <- read_csv("data/dirichlet_island/many_genes_per_source.csv")
+.right-plot[
+```{r}
 best_attr <- attr %>% filter(str_detect(Genes, "Best"), str_detect(Data, "Full")) %>%
   extract(Genes, into='Genes', regex="([0-9]+)", convert=TRUE) %>%
   spread(quantile, value)
 
-source_cols2 <- c(Poultry = "brown", Beef = "steelblue4", Sheep = "steelblue1")
 ggplot(best_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
   geom_ribbon(aes(ymin=`0.025`, ymax=`0.975`), alpha=0.3) +
   geom_ribbon(aes(ymin=`0.25`, ymax=`0.75`), alpha=0.3) +
@@ -456,60 +267,25 @@ ggplot(best_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
   coord_cartesian(ylim = c(0,1)) +
   scale_x_continuous(limits = c(5,100), expand=c(0,0)) +
   scale_colour_manual(values = source_cols2) +
-  scale_fill_manual(values = source_cols2)
+  scale_fill_manual(values = source_cols2) +
+  theme(legend.position='bottom')
 ```
+]
 
 ---
 
-## Why does this happen?
+.left-code[
+## Stabilising attribution
 
-The island likelihood for each type is complicated, but if we have $g$ genes is approximately
-$$
-p(\mathsf{st} \mid m, \tau) \approx \tau m^d (1-m)^{g-d}
-$$
-where $m$ is a combination of mutation and recombination probabilities, $\tau$ is a migration probability, and $d$ is the average number of loci that differ between isolate pairs.
+- Small differences in the mutation and recombination rates across sources are amplified in the likelihood.
 
-This is maximised when $m = d/g$ so that
-$$
-p(\mathsf{st} \mid m, \tau) \approx  \tau f(m)^g
-$$
-where
-$$
-f(m) = m^m (1-m)^{1-m}
-$$
+- Everything ends up being assigned to the source with the lowest diversity.
 
----
+- Stabilise by assuming recombination and mutation probabilities are the same across all sources.
+]
 
-## Why does this happen?
-
-Suppose we have two sources with $m_1=0.02$ and $m_2=0.03$.
-
-```{r, fig.dim=c(7, 4), out.width='70%'}
-f <- function(m) { m^m *(1-m)^(1-m) }
-fm <- expand.grid(m = c(0.02, 0.03), g = 1:100) %>% mutate(f = f(m)^g)
-df <- fm %>% group_by(g) %>% summarise(df=exp(-diff(log(f))))
-expr <- expression(paste("p( st |" ~ m[1] ~ ") / (p( st |"~m[2]~")"))
-ggplot(df, aes(x=g, y=df)) + geom_line(lwd=2) +
-  scale_y_continuous(expr, expand=c(0,0), lim=c(0,40)) + scale_x_continuous("Number of genes", expand=c(0,0))
-```
-
-The island model just ends up assigning everything to the lower diversity source as it's way more likely that everything evolved on that source then migrated.
-
----
-
-## Can we avoid it?
-
-- Instead of per-source estimates of recombination and mutation probabilities, make them common across all sources.
-
-- This then stabilises the genotype probability distributions to be the same order of magnitude across all sources.
-
-- We thus get sensible attribution with increasing gene counts
-
----
-
-## Stable attribution as gene count increases
-
-```{r, fig.dim=c(8, 5), out.width='80%'}
+.right-plot[
+```{r}
 common_attr <- read_csv("data/dirichlet_island/many_genes_common.csv")
 common_best <- common_attr %>% filter(str_detect(Genes, "Best"), str_detect(Data, "Full")) %>%
   extract(Genes, into='Genes', regex="([0-9]+)", convert=TRUE) %>%
@@ -523,24 +299,14 @@ ggplot(common_best, aes(x=Genes, y=`0.5`, fill=Source)) +
   coord_cartesian(ylim = c(0,1)) +
   scale_x_continuous(limits = c(5,100), expand=c(0,0)) +
   scale_colour_manual(values = source_cols2) +
-  scale_fill_manual(values = source_cols2)
+  scale_fill_manual(values = source_cols2) +
+  theme(legend.position='bottom')
 ```
+]
 
 ---
 
-## Story so far
-
-- As we increase the number of genes, the Dirichlet model loses all ability to differentiate between sources.
-
-- The Island model still works as it should, but we need to estimate shared mutation and recombination probabilities.
-
-- We get a stable attribution as the number of genes increases.
-
-- **But how should we choose genes?**
-
----
-
-## Maybe it doesn't matter?
+## Are the MLST genes special?
 
 Choose 7 genes at random and compare with MLST
 
@@ -568,7 +334,7 @@ ggplot(random_attr, aes(x=Genes, y=`0.5`, fill=Source)) +
 
 - We have 1343 core genes available to us.
 
-- Our goal is to classify human isolates as coming from a set of sources.
+- Our goal is to classify human isolates to their most likely source.
 
 - Existing models break if we use too many genes; when we fix them, the attribution is pretty much the same as using MLST.
 
@@ -590,15 +356,7 @@ class: middle, inverse
 
 - Train the forest on the source isolates, and predict on the human isolates - voila!
 
---
-
 - But, we have another two problems!
-
-- Our predictors are **categorical**, and many are highly diverse. Median number of alleles is 48.
-
-- Many alleles are seen in only one isolate.
-
-- Many alleles are seen in only one **human** isolate (so aren't in the training set).
 
 ---
 
@@ -612,7 +370,7 @@ down each branch in order to best separate the sources.
 
 - The number of subsets to consider is $2^{K-1}$ where $K$ is the number of alleles.
 
-- If the median $K$ is 48, this is a problem.
+- The median $K$ is 48, so this is computationally infeasible.
 ]
 
 .right-plot[
@@ -645,39 +403,19 @@ plot_right
 
 ---
 
-## Problem 2: Unique alleles
-
-- We have unique alleles in the test set (human isolates).
-
-- Random forests work by repeatedly splitting the sample, so each tree is built off a separate subsample.
-
-- The 'out of bag' sample (the isolates that don't get used to build a tree) are used to evaluate performance. This will have unique alleles.
-
-- When we try and optimise our training (e.g. by using cross validation) then the validation set may also have unique alleles.
-
-- And even within a tree (where the data are all 'observed'), by the time we get down a few branches we may no longer have any isolates of a certain allele left, so can't train with that allele.
-
----
-
 class: inverse, middle
 
-# Solution 1: Encoding categorical variables
+# Encoding categorical variables
 
 ---
 
 ## Encoding categorical variables as numeric
 
-- One hot encoding: Replace the categorical predictor with binary indicators.
+- The alleles are just numbers, so why not treat them as such?
 
-    - Need to be careful how we choose preditors for each tree - typically biased towards predictors with more levels (bigger block of indicators to pick).
-    - Means only some alleles from a gene are considered in a given tree.
-    - Any allele we haven't seen is encoded as "not anything else".
+- The trees and forest can split a numeric variable wherever they like, so order maybe doesn't matter much?
 
-- Numeric encoding: Just treat the categories as ordered and use directly.
-
-    - The trees and forest can split a numeric variable wherever they like, so order maybe doesn't matter much?
-    - Alleles are already numeric, right?
-    - Any allele we haven't seen is already encoded as some other number.
+- Any allele we haven't seen is already encoded as some other number.
 
 ---
 
@@ -720,22 +458,24 @@ ggplot(dat_for_plot) +
 .left-code[
 ## Numeric encoding: Consequences
 
-Arning et. al. (unknowingly) used this encoding.
+Arning et. al.<sup>1</sup> used this encoding.
 
 Results from their work are less impressive when we randomise the
 allele labels.
+
+.footnote[[1] https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1009436]
 ]
 
 .right-plot[
-```{r}
-arning <- read_csv("data/arning_shuffle.csv") |> mutate(Method = fct_recode(Method, Published = "Paper Order")) |>
+```{r, fig.dim=c(4.8,4.2)}
+arning <- read_csv("data/arning_shuffle.csv") |> mutate(Method = fct_recode(Method, Published = "Paper Order", Randomised = "Reshuffled")) |>
   mutate(Measure = fct_recode(Measure, `Positive Predictive Value` = "Precision", Sensitivity = "Recall"))
 ggplot(arning) +
   geom_point(aes(x=Labels, y=value, col=Method), position=position_dodge(width=0.25)) +
   facet_wrap(vars(Measure), nrow=2) +
   labs(x=NULL, y=NULL, col=NULL) +
   theme(legend.position = 'bottom') +
-  scale_colour_manual(values = c(Published = 'black', Reshuffled = 'darkred')) +
+  scale_colour_manual(values = c(Published = 'black', Randomised = 'darkred')) +
   scale_y_continuous(limits = c(0,1))
 ```
 ]
@@ -817,7 +557,7 @@ tab2 |> arrange(A) |> knitr::kable()
 ## More than 2 sources
 
 .left-code[
-- Coppersmith (year) extended this to multiple sources.
+- Coppersmith (1999) extended this to multiple sources.
 
 - Order by the scores of the first principal component of the proportioned contingency table.
 
@@ -847,7 +587,7 @@ tab3 |> knitr::kable()
 ## More than 2 sources
 
 .left-code[
-- Coppersmith (year) extended this to multiple sources.
+- Coppersmith (1999) extended this to multiple sources.
 
 - Order by the scores of the first principal component of the proportioned contingency table.
 
@@ -870,7 +610,7 @@ tab4 |> knitr::kable()
 .left-code[
 ## More than 2 sources
 
-- Coppersmith (year) extended this to multiple sources.
+- Coppersmith (1999) extended this to multiple sources.
 
 - Order by the scores of the first principal component of the proportioned contingency table.
 
@@ -902,7 +642,7 @@ ggplot(tab4) +
 ## More than 2 sources
 
 .left-code[
-- Coppersmith (year) extended this to multiple sources.
+- Coppersmith (1999) extended this to multiple sources.
 
 - Order by the scores of the first principal component of the proportioned contingency table.
 
@@ -929,9 +669,9 @@ tab4 |> mutate(order = tab4pc$x[,1]) |>
 
 - Split the source data into 5 sets.
 
-- Use cross-validation to assess precision.
+- Use cross-validation to assess performance (sensitivity).
 
-- Reasonably good effort for all sources.
+- Does well with poultry, less well with sheep and beef.
 ]
 
 .right-plot-narrow[
@@ -946,7 +686,7 @@ bias |> filter(uses_unique == "No", Ordering == "Poultry", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Sensitivity") +
+  labs(x=NULL, y="Proportion") +
   scale_colour_manual(values = source_cols2)
 ```
 ]
@@ -961,7 +701,7 @@ bias |> filter(uses_unique == "No", Ordering == "Poultry", method=="ranger") |>
 
 - Use cross-validation to assess precision.
 
-- Reasonably good effort for all sources.
+- Does well with poultry, less well with sheep and beef.
 
 - For the isolates with unique alleles, poultry still gets assigned well.
 ]
@@ -976,7 +716,7 @@ bias |> filter(uses_unique == "Yes", Ordering == "Poultry", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, "Sensitivity") +
+  labs(x=NULL, y="Proportion") +
   scale_colour_manual(values = source_cols2)
 ```
 ]
@@ -991,7 +731,7 @@ bias |> filter(uses_unique == "Yes", Ordering == "Poultry", method=="ranger") |>
 
 - Use cross-validation to assess precision.
 
-- Reasonably good effort for all sources.
+- Does well with poultry, less well with sheep and beef.
 
 - For the isolates with unique alleles, poultry still gets assigned well.
 
@@ -1008,7 +748,7 @@ bias |> filter(uses_unique == "Yes", Ordering == "Sheep", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Sensitivity") +
+  labs(x=NULL, y="Proportion") +
   scale_colour_manual(values = source_cols2)
 ```
 ]
@@ -1031,7 +771,7 @@ bias |> filter(uses_unique == "Yes", method=="ranger") |>
   scale_y_continuous(limits=c(0,1)) +
   scale_shape_manual(values = c("circle filled", "circle")) +
   guides(shape = 'none', colour='none') +
-  labs(x=NULL, y="Sensitivity") +
+  labs(x=NULL, y="Proportion") +
   scale_colour_manual(values = source_cols2)
 ```
 
@@ -1056,8 +796,14 @@ bias |> filter(uses_unique == "Yes") |>
   scale_colour_manual(values = c(CA = "darkred", ranger="black")) +
   scale_alpha_manual(values = c(CA = 1, ranger=0.2)) +
   guides(shape = 'none', colour='none', alpha='none') +
-  labs(x=NULL, y="Sensitivity")
+  labs(x=NULL, y="Proportion")
 ```
+
+---
+
+class: middle, inverse
+
+# Encoding  by genetic distance
 
 ---
 
@@ -1133,14 +879,18 @@ datpc <- prcomp(dat |> select(x1,x2))
 
 dx <- datpc$rotation[1,1]*20
 dy <- datpc$rotation[2,1]*20
+pc_x1 <- mean(dat$x1) -dx
+pc_x2 <- mean(dat$x1) +dx
+pc_y1 <- mean(dat$x2) -dy
+pc_y2 <- mean(dat$x2) +dy
 
 ggplot(dat |> filter(allele != "13")) +
   geom_point(aes(x=x1, y=x2)) +
   geom_text(aes(x=x1, y=x2, label=allele), nudge_x=1, nudge_y=1) +
-  geom_segment(aes(x=mean(x1)-dx, y=mean(x2)-dy, xend=mean(x1)+dx,
-                   yend=mean(x2)+dy), col='darkred',
+  geom_segment(aes(x=pc_x1, y=pc_y1, xend=pc_x2,
+                   yend=pc_y2), col='darkred',
                arrow = arrow(length=unit(0.1, "inches"), type="closed", ends="both")) +
-  annotate("text", x=mean(dat$x1)+2, y=mean(dat$x2)-1, label="PCO1", col="darkred") +
+  annotate("text", x=mean(dat$x1)+3, y=mean(dat$x2)-1, label="PCO1", col="darkred") +
   coord_equal(xlim=c(-12,15), ylim=c(-26,21)) +
   theme(axis.ticks = element_blank(),
         axis.text = element_blank(),
@@ -1166,19 +916,14 @@ ggplot(dat |> filter(allele != "13")) +
 
 .right-plot-narrow[
 ```{r, fig.dim=c(3.2,4.8)}
-datpc <- prcomp(dat |> select(x1,x2))
-
-dx <- datpc$rotation[1,1]*20
-dy <- datpc$rotation[2,1]*20
-
 ggplot(dat) +
   geom_point(aes(x=x1, y=x2, col=allele == "13")) +
   geom_text(aes(x=x1, y=x2, label=allele, col=allele=="13"), nudge_x=1, nudge_y=1) +
-  geom_segment(aes(x=mean(x1)-dx, y=mean(x2)-dy, xend=mean(x1)+dx,
-                   yend=mean(x2)+dy), col='darkred',
+  geom_segment(aes(x=pc_x1, y=pc_y1, xend=pc_x2,
+                   yend=pc_y2), col='darkred',
                arrow = arrow(length=unit(0.1, "inches"), type="closed", ends="both"),
                alpha=0.5) +
-  annotate("text", x=mean(dat$x1)+2, y=mean(dat$x2)-1, label="PCO1", col="darkred") +
+  annotate("text", x=mean(dat$x1)+3, y=mean(dat$x2)-1, label="PCO1", col="darkred") +
   geom_segment(data=edge_dat |> filter(allele == "13" | allele2 == "13"),
                aes(x=x1, y=x2, xend=y1, yend=y2), col='steelblue') +
   guides(colour = 'none') +
@@ -1195,7 +940,9 @@ ggplot(dat) +
 .left-code[
 ## Encode by genetic distance
 
-- The ordering now no longer depends on the target source, so there is no potential for bias like with the Coppersmith technique.
+- The ordering now no longer depends on the target source, so there is no potential for the bias seen with target encoding.
+
+- Genetic encoding places each unique allele where it best fits based on distance to existing alleles, rather than treating them all the same like target encoding.
 
 - But, if genetic closeness does not associate with source closeness, we may not get a better result.
 ]
@@ -1224,9 +971,13 @@ pco_cap |> filter(Ordering == "Sheep") |>
 ---
 
 .left-code[
-## Attribution
+## Source Attribution
 
-For isolates with many unique alleles, the PCO method produces consistent predictions between trees that utilise the unique alleles and trees that don't.
+- Lots of the human isolates have unique alleles.
+
+- For isolates with many unique alleles, the PCO method produces consistent predictions between trees that utilise the unique alleles and trees that don't.
+
+- The distance measure is only using SNPs. Perhaps there's room to improve this?
 ]
 
 .right-plot[
@@ -1265,7 +1016,7 @@ attr |> filter(row %in% rows) |>
 
 - Using more genes for source attribution doesn't necessarily help.
 
-- Models need to cope with lots of high cardinality categorical variables.
+- Models need to cope with lots of high cardinality categorical variables, with many levels unique to the test set.
 
 - Existing models break in ways that are sometimes subtle!
 
